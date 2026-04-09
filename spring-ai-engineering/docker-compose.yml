@@ -1,0 +1,86 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: spring-ai-engineering:dev
+    container_name: ai-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: aiengineering
+      DB_USER: aiengineering
+      DB_PASSWORD: aiengineering
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # Set in shell or a .env file next to docker-compose.yml
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-changeMe}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./target/spring-ai-engineering-0.0.1-SNAPSHOT.jar:/app/app.jar:ro
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-postgres
+    environment:
+      POSTGRES_DB: aiengineering
+      POSTGRES_USER: aiengineering
+      POSTGRES_PASSWORD: aiengineering
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiengineering -d aiengineering"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v2.54.1
+    container_name: ai-prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:11.3.0
+    container_name: ai-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  redis_data:

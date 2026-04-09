@@ -1,0 +1,11 @@
+meta {
+  name: List sessions
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/chat/sessions
+  body: none
+  auth: inherit
+}

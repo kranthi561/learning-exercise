@@ -1,0 +1,21 @@
+meta {
+  name: Ingest
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/knowledge/ingest
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "text": "Spring AI Engineering: JWT secures /api/v1/**. Chat uses OpenAI with tools and pgvector RAG. Actuator exposes /actuator/prometheus.",
+    "metadata": {
+      "source": "bruno-seed",
+      "version": "1"
+    }
+  }
+}

@@ -1,0 +1,299 @@
+{
+  "info": {
+    "name": "spring-ai-engineering",
+    "_postman_id": "spring-ai-engineering-collection",
+    "description": "# Spring AI Engineering API\n\n1. Select **local** environment.\n2. Run **Auth → Login** (or **Register** then **Login**). The login script stores `token`.\n3. Run **Chat → Create session** to set `sessionId` from the response.\n4. Call chat and knowledge endpoints as needed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@example.com\",\n  \"password\": \"password123\",\n  \"displayName\": \"Demo User\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var body = pm.response.json();",
+                  "  if (body && body.accessToken) {",
+                  "    pm.environment.set(\"token\", body.accessToken);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/search?q=demo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "demo"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var body = pm.response.json();",
+                  "  if (body && body.id != null) {",
+                  "    pm.environment.set(\"sessionId\", String(body.id));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My first session\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "List sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "Send message (agent + tools + RAG)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"What tools do you have? Summarize any retrieved knowledge if relevant.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/sessions/{{sessionId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "sessions", "{{sessionId}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "List messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/sessions/{{sessionId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "sessions", "{{sessionId}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Knowledge",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Ingest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Spring AI Engineering: JWT secures /api/v1/**. Chat uses OpenAI with tools and pgvector RAG. Actuator exposes /actuator/prometheus.\",\n  \"metadata\": {\n    \"source\": \"bruno-seed\",\n    \"version\": \"1\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/ingest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "knowledge", "ingest"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

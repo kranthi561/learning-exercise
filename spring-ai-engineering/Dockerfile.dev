@@ -1,0 +1,8 @@
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+# JAR is mounted at runtime via docker-compose volume — build locally with:
+#   ./mvnw -DskipTests package
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
