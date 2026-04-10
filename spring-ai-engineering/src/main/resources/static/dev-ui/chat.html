@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chat — Dev UI</title>
+  <!-- marked.js: lightweight Markdown → HTML parser, no dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -195,6 +197,81 @@
     }
     .msg-meta { font-size: 11px; color: #9ca3af; }
 
+    /* ── Markdown rendering inside assistant bubbles ── */
+    .msg-assistant .msg-bubble { max-width: 92%; }
+
+    .msg-assistant .msg-bubble p          { margin: 0 0 10px; }
+    .msg-assistant .msg-bubble p:last-child{ margin-bottom: 0; }
+
+    .msg-assistant .msg-bubble h1,
+    .msg-assistant .msg-bubble h2,
+    .msg-assistant .msg-bubble h3,
+    .msg-assistant .msg-bubble h4         { margin: 14px 0 6px; font-weight: 700; line-height: 1.3; color: #111827; }
+    .msg-assistant .msg-bubble h1 { font-size: 18px; }
+    .msg-assistant .msg-bubble h2 { font-size: 16px; }
+    .msg-assistant .msg-bubble h3 { font-size: 14px; }
+
+    .msg-assistant .msg-bubble ul,
+    .msg-assistant .msg-bubble ol         { margin: 6px 0 10px 20px; padding: 0; }
+    .msg-assistant .msg-bubble li         { margin-bottom: 4px; }
+
+    .msg-assistant .msg-bubble strong     { font-weight: 700; color: #111827; }
+    .msg-assistant .msg-bubble em         { font-style: italic; }
+
+    /* Inline code */
+    .msg-assistant .msg-bubble code {
+      background: #e5e7eb;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      color: #be185d;
+    }
+
+    /* Fenced code block */
+    .msg-assistant .msg-bubble pre {
+      background: #1e1e2e;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+    .msg-assistant .msg-bubble pre code {
+      background: none;
+      padding: 0;
+      color: #cdd6f4;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* Blockquote */
+    .msg-assistant .msg-bubble blockquote {
+      border-left: 3px solid #c4b5fd;
+      margin: 8px 0;
+      padding: 4px 12px;
+      color: #6b7280;
+      font-style: italic;
+    }
+
+    /* Table */
+    .msg-assistant .msg-bubble table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+    .msg-assistant .msg-bubble th,
+    .msg-assistant .msg-bubble td {
+      border: 1px solid #d1d5db;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .msg-assistant .msg-bubble th { background: #f3f4f6; font-weight: 700; }
+    .msg-assistant .msg-bubble tr:nth-child(even) td { background: #fafafa; }
+
+    /* Horizontal rule */
+    .msg-assistant .msg-bubble hr { border: none; border-top: 1px solid #e5e7eb; margin: 10px 0; }
+
     /* Hide/show toggle for message log */
     #message-log.collapsed { display: none; }
 
@@ -343,6 +420,9 @@
 <script>
   const BASE = 'http://localhost:8080';
   let activeSessionId = null;
+
+  // Configure marked: enable GitHub-flavoured Markdown (tables, strikethrough, etc.)
+  marked.use({ gfm: true, breaks: true });
 
   /* ── Init ── */
   (function init() {
@@ -498,8 +578,13 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
-    // Escape HTML then convert \n → <br> so multi-line responses render as real line breaks
-    bubble.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+    if (role === 'assistant') {
+      // Parse Markdown → HTML so the AI's formatting (bold, code, lists, tables) renders correctly
+      bubble.innerHTML = marked.parse(text);
+    } else {
+      // User messages are plain text — escape to prevent XSS, then preserve newlines
+      bubble.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+    }
 
     row.appendChild(label);
     row.appendChild(bubble);

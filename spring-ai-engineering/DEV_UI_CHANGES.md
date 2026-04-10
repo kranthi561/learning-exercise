@@ -1,23 +1,24 @@
 # chat.html — Changes
 
-## Latest fixes
+## Latest: Markdown rendering
 
-| # | Problem | Fix |
+| # | Change | Detail |
 |---|---|---|
-| 1 | **Scroll not working** | Added `min-height: 0` to `#message-log` — without it flex items refuse to shrink below content height so `overflow-y: auto` never activates. Also added `overflow: hidden` to the card so the height bound propagates correctly. |
-| 2 | **User message not shown** | Restored `appendBubble('user', content)` before the API call. User messages appear right-aligned in indigo; assistant messages appear left-aligned in grey. |
+| 1 | **marked.js added** | Loaded from CDN (`cdn.jsdelivr.net/npm/marked@9`). No build step needed. |
+| 2 | **Assistant replies parsed as Markdown** | `marked.parse(text)` with `gfm: true, breaks: true` — supports bold, italic, headings, lists, code blocks, tables, blockquotes, horizontal rules. |
+| 3 | **User messages stay plain text** | Escaped with `escapeHtml()` to prevent XSS; newlines still render as `<br>`. |
+| 4 | **Markdown CSS** | Scoped to `.msg-assistant .msg-bubble` — styled code blocks (dark theme), tables, blockquotes, headings, lists, inline code. |
 
 ## All active behaviours
 
 | # | Behaviour |
 |---|---|
 | 1 | User message (You) shown right-aligned immediately on send |
-| 2 | Assistant reply shown left-aligned after API response |
-| 3 | `\n` in AI text renders as real line breaks via `\n → <br>` |
-| 4 | Correct DTO field `assistantMessage` extracted from response |
-| 5 | Chat window scrolls to bottom after every bubble |
-| 6 | Hide / Show toggle on ② Chat header |
-| 7 | Clear button wipes log without ending the session |
+| 2 | Assistant reply rendered as Markdown, left-aligned |
+| 3 | Chat window scrolls to bottom after every bubble |
+| 4 | Correct DTO field `assistantMessage` used |
+| 5 | Hide / Show toggle on ② Chat header |
+| 6 | Clear button wipes log without ending the session |
 
 ## File changed
 
