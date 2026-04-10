@@ -42,3 +42,14 @@
 | `src/main/resources/static/dev-ui/auth.html` | New — login/register UI |
 | `src/main/resources/static/dev-ui/chat.html` | New — session + chat UI |
 | `src/main/java/com/aiengineering/security/SecurityConfig.java` | Added `.requestMatchers("/dev-ui/**").permitAll()` |
+
+## Login:
+<img width="608" height="550" alt="image" src="https://github.com/user-attachments/assets/87a5c62c-83b1-415c-a9e3-1efe31993cee" />
+
+## Chat with AI Agent:
+<img width="1508" height="748" alt="image" src="https://github.com/user-attachments/assets/9a4a9118-a2dc-4c53-8018-bcedd81ba889" />
+
+
+
+
+
