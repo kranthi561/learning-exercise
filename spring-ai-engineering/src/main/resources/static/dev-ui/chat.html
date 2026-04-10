@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat — Dev UI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 12px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+    .topbar strong { font-size: 16px; letter-spacing: .3px; }
+    .topbar .right { display: flex; align-items: center; gap: 14px; }
+    .badge-local {
+      background: #ffc107;
+      color: #000;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+    }
+    .auth-status { font-size: 13px; color: #a5b4fc; }
+    .btn-sm {
+      padding: 5px 13px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-logout { background: #ef4444; color: #fff; }
+    .btn-logout:hover { background: #dc2626; }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+      padding: 24px 28px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      padding: 22px;
+    }
+    .card h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #f1f3f5;
+    }
+
+    /* ── Form elements ── */
+    label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .4px; }
+    input[type=text], textarea {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s;
+      margin-bottom: 12px;
+      resize: vertical;
+    }
+    input:focus, textarea:focus { border-color: #4f46e5; }
+
+    .btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-primary:disabled { background: #a5b4fc; cursor: not-allowed; }
+    .btn-green { background: #059669; color: #fff; }
+    .btn-green:hover { background: #047857; }
+    .btn-green:disabled { background: #6ee7b7; cursor: not-allowed; }
+    .btn-clear { background: #f3f4f6; color: #374151; }
+    .btn-clear:hover { background: #e5e7eb; }
+
+    /* ── Session info chip ── */
+    .session-chip {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: #ede9fe;
+      border: 1px solid #c4b5fd;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: #4c1d95;
+    }
+    .session-chip .id { font-family: monospace; font-weight: 700; font-size: 14px; }
+
+    /* ── No-auth warning ── */
+    .no-auth {
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      padding: 14px;
+      color: #7f1d1d;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .no-auth a { color: #7f1d1d; font-weight: 700; }
+
+    /* ── Chat window ── */
+    .chat-window {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 130px);
+    }
+    /* overflow:hidden lets the inner flex child (#message-log) be the scroll container */
+    .chat-window .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    #message-log {
+      flex: 1;
+      /* min-height:0 is the critical fix — without it flex items won't shrink below
+         their content height, so overflow-y:auto never activates and scroll breaks */
+      min-height: 0;
+      overflow-y: auto;
+      padding: 6px 4px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .msg-row { display: flex; flex-direction: column; gap: 4px; }
+
+    /* Shared bubble base */
+    .msg-bubble {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    /* User bubble — right side, indigo */
+    .msg-user .msg-bubble {
+      align-self: flex-end;
+      background: #4f46e5;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-user .msg-label  { align-self: flex-end; }
+    .msg-user .msg-meta   { align-self: flex-end; }
+
+    /* Assistant bubble — left side, light grey */
+    .msg-assistant .msg-bubble {
+      align-self: flex-start;
+      background: #f3f4f6;
+      color: #1f2937;
+      border-bottom-left-radius: 4px;
+    }
+    .msg-assistant .msg-label { align-self: flex-start; }
+    .msg-assistant .msg-meta  { align-self: flex-start; }
+
+    .msg-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #9ca3af;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+    .msg-meta { font-size: 11px; color: #9ca3af; }
+
+    /* Hide/show toggle for message log */
+    #message-log.collapsed { display: none; }
+
+    /* Typing indicator */
+    .typing {
+      display: none;
+      align-self: flex-start;
+      background: #f3f4f6;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .typing.show { display: block; }
+
+    /* Empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 8px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+    .empty-state .icon { font-size: 36px; }
+
+    /* Input area */
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    .input-row textarea {
+      flex: 1;
+      margin-bottom: 0;
+      min-height: 44px;
+      max-height: 120px;
+    }
+    .btn-row { display: flex; gap: 8px; margin-top: 0; }
+
+    /* Inline error */
+    .inline-err {
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: 13px;
+      color: #7f1d1d;
+      margin-bottom: 10px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <strong>Spring AI Engineering &mdash; Dev UI</strong>
+  <div class="right">
+    <span class="badge-local">LOCAL ONLY</span>
+    <span class="auth-status" id="auth-label">Not logged in</span>
+    <button class="btn-sm btn-logout" onclick="logout()">Logout</button>
+    <a href="auth.html" style="color:#a5b4fc; font-size:13px; text-decoration:none;">← Auth</a>
+  </div>
+</div>
+
+<!-- ── Main layout ── -->
+<div class="layout">
+
+  <!-- ── Left panel: session ── -->
+  <div>
+
+    <!-- No-auth warning -->
+    <div id="no-auth" class="no-auth" style="display:none">
+      ⚠ No token found. <a href="auth.html">Login first →</a>
+    </div>
+
+    <!-- Create Session -->
+    <div class="card">
+      <h2>① Create Session</h2>
+
+      <div id="session-chip" class="session-chip">
+        <span>Active session:</span>
+        <span class="id" id="chip-id">—</span>
+      </div>
+
+      <label for="session-title">Title</label>
+      <input id="session-title" type="text" value="Dev Test Session" />
+
+      <button class="btn btn-primary" id="btn-create" onclick="createSession()">Create Session</button>
+
+      <div id="create-err" class="inline-err"></div>
+    </div>
+
+    <!-- Session ID override -->
+    <div class="card" style="margin-top:16px">
+      <h2>Override Session ID</h2>
+      <label for="manual-session">Session ID (manual)</label>
+      <input id="manual-session" type="text" placeholder="e.g. 3" oninput="onManualSession()" />
+      <p style="font-size:12px; color:#9ca3af; margin-top:-6px">Leave blank to use the session created above.</p>
+    </div>
+
+    <!-- Raw response -->
+    <div class="card" style="margin-top:16px">
+      <h2>Last Raw Response</h2>
+      <pre id="raw-response" style="font-size:11px; color:#374151; white-space:pre-wrap; word-break:break-all; max-height:200px; overflow-y:auto; background:#f8f9fa; padding:10px; border-radius:6px; border:1px solid #e9ecef">(none yet)</pre>
+    </div>
+  </div>
+
+  <!-- ── Right panel: chat ── -->
+  <div class="chat-window">
+    <div class="card">
+      <h2 style="display:flex; justify-content:space-between; align-items:center">
+        <span>② Chat</span>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-clear btn-sm" onclick="clearChat()" style="font-size:12px; padding:4px 10px">Clear</button>
+          <button class="btn btn-clear btn-sm" id="btn-toggle" onclick="toggleLog()" style="font-size:12px; padding:4px 10px">Hide</button>
+        </div>
+      </h2>
+
+      <div id="message-log">
+        <div class="empty-state">
+          <div class="icon">💬</div>
+          <div>Create a session, then start chatting</div>
+        </div>
+      </div>
+
+      <div class="typing" id="typing">AI is thinking…</div>
+
+      <div id="send-err" class="inline-err"></div>
+
+      <div class="input-row">
+        <textarea id="msg-input"
+                  placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+                  rows="2"
+                  onkeydown="onMsgKeydown(event)"></textarea>
+        <button class="btn btn-green" id="btn-send" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const BASE = 'http://localhost:8080';
+  let activeSessionId = null;
+
+  /* ── Init ── */
+  (function init() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      document.getElementById('no-auth').style.display = 'block';
+      document.getElementById('auth-label').textContent = 'Not logged in';
+    } else {
+      document.getElementById('no-auth').style.display = 'none';
+      // Decode JWT subject for display (no signature check needed here)
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        document.getElementById('auth-label').textContent = payload.email ?? `uid:${payload.sub}`;
+      } catch (_) {}
+    }
+  })();
+
+  /* ── Auth helpers ── */
+  function authHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    };
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('tokenType');
+    window.location.href = 'auth.html';
+  }
+
+  /* ── Session ── */
+  async function createSession() {
+    const btn = document.getElementById('btn-create');
+    const errEl = document.getElementById('create-err');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+
+    try {
+      const r = await fetch(`${BASE}/api/v1/chat/sessions`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ title: document.getElementById('session-title').value.trim() })
+      });
+      const data = await r.json();
+
+      if (!r.ok) {
+        showErr(errEl, `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        return;
+      }
+
+      activeSessionId = data.id;
+      updateSessionChip(data.id, data.title);
+      clearChat();
+      document.getElementById('manual-session').value = '';
+
+    } catch (e) {
+      showErr(errEl, `Network error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Session';
+    }
+  }
+
+  function onManualSession() {
+    const v = document.getElementById('manual-session').value.trim();
+    if (v) {
+      activeSessionId = v;
+      updateSessionChip(v, 'manual override');
+    }
+  }
+
+  function updateSessionChip(id, title) {
+    const chip = document.getElementById('session-chip');
+    document.getElementById('chip-id').textContent = `#${id} — ${title}`;
+    chip.style.display = 'flex';
+  }
+
+  /* ── Send message ── */
+  async function sendMessage() {
+    const input = document.getElementById('msg-input');
+    const content = input.value.trim();
+    if (!content) return;
+
+    if (!activeSessionId) {
+      showErr(document.getElementById('send-err'), 'Create a session first (or enter a session ID manually).');
+      return;
+    }
+
+    const btn = document.getElementById('btn-send');
+    const errEl = document.getElementById('send-err');
+    errEl.style.display = 'none';
+
+    // Show user message immediately, then clear input
+    appendBubble('user', content);
+    input.value = '';
+    input.style.height = 'auto';
+
+    btn.disabled = true;
+    showTyping(true);
+
+    try {
+      const r = await fetch(`${BASE}/api/v1/chat/sessions/${activeSessionId}/messages`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ content })
+      });
+      const data = await r.json();
+
+      // Update raw response pane
+      document.getElementById('raw-response').textContent = JSON.stringify(data, null, 2);
+
+      if (!r.ok) {
+        showErr(errEl, `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        return;
+      }
+
+      // Extract assistant text from the correct DTO field
+      const replyText = data.assistantMessage ?? data.reply ?? data.content ?? JSON.stringify(data);
+      const meta = `RAG chunks: ${data.ragChunksUsed ?? data.ragDocuments ?? 0}  •  ${data.latencyMs ?? data.durationMs ?? '?'}ms`;
+      appendBubble('assistant', replyText, meta);
+
+    } catch (e) {
+      showErr(errEl, `Network error: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      showTyping(false);
+    }
+  }
+
+  /* ── Chat rendering ── */
+  // role: 'user' | 'assistant'
+  function appendBubble(role, text, meta) {
+    const log = document.getElementById('message-log');
+
+    // Auto-show the log if it was hidden
+    if (log.classList.contains('collapsed')) {
+      log.classList.remove('collapsed');
+      document.getElementById('btn-toggle').textContent = 'Hide';
+    }
+
+    // Remove empty-state placeholder on first message
+    const empty = log.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    const row = document.createElement('div');
+    row.className = `msg-row msg-${role}`;
+
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = role === 'user' ? 'You' : 'Assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    // Escape HTML then convert \n → <br> so multi-line responses render as real line breaks
+    bubble.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+
+    row.appendChild(label);
+    row.appendChild(bubble);
+
+    if (meta) {
+      const m = document.createElement('div');
+      m.className = 'msg-meta';
+      m.textContent = meta;
+      row.appendChild(m);
+    }
+
+    log.appendChild(row);
+    // Scroll to bottom after every bubble so the latest content is always in view
+    log.scrollTop = log.scrollHeight;
+  }
+
+  /* ── Hide / show the message log ── */
+  function toggleLog() {
+    const log = document.getElementById('message-log');
+    const btn = document.getElementById('btn-toggle');
+    const hidden = log.classList.toggle('collapsed');
+    btn.textContent = hidden ? 'Show' : 'Hide';
+  }
+
+  function clearChat() {
+    const log = document.getElementById('message-log');
+    log.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">💬</div>
+        <div>Session ready — start chatting below</div>
+      </div>`;
+    document.getElementById('raw-response').textContent = '(none yet)';
+    document.getElementById('send-err').style.display = 'none';
+  }
+
+  function showTyping(show) {
+    document.getElementById('typing').classList.toggle('show', show);
+  }
+
+  /* ── Keyboard shortcut: Enter sends, Shift+Enter = new line ── */
+  function onMsgKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  /* ── Helpers ── */
+  function showErr(el, msg) {
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  // Prevent XSS when injecting response text via innerHTML
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+</script>
+</body>
+</html>

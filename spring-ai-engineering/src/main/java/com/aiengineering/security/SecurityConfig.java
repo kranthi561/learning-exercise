@@ -50,6 +50,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/**").permitAll()
                 // Allow health/metrics endpoints for load-balancers and monitoring without auth.
                 .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
+                // Allow the local dev UI pages to be served without a token.
+                // These are static HTML files under src/main/resources/static/dev-ui/
+                // and should NEVER be included in a production build.
+                .requestMatchers("/dev-ui/**").permitAll()
                 // All other endpoints require a valid JWT.
                 .anyRequest().authenticated())
 

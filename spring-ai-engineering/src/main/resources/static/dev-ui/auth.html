@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auth — Dev UI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.10);
+      width: 420px;
+      padding: 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      margin-bottom: 18px;
+      letter-spacing: .4px;
+    }
+
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 22px; color: #1a1a2e; }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 2px solid #e9ecef; margin-bottom: 24px; }
+    .tab {
+      padding: 9px 20px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      color: #6c757d;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab.active { color: #4f46e5; border-color: #4f46e5; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Form */
+    label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    input[type=text], input[type=email], input[type=password] {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s;
+      margin-bottom: 14px;
+    }
+    input:focus { border-color: #4f46e5; }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    button:hover { background: #4338ca; }
+    button:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    /* Response box */
+    .result {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+      display: none;
+      word-break: break-all;
+    }
+    .result.success { background: #d1fae5; border: 1px solid #6ee7b7; color: #065f46; }
+    .result.error   { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; }
+
+    .token-box {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 7px;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-family: monospace;
+      word-break: break-all;
+      color: #374151;
+      margin-top: 10px;
+    }
+
+    .go-btn {
+      display: none;
+      margin-top: 14px;
+      background: #059669;
+      text-align: center;
+      text-decoration: none;
+      color: #fff;
+      padding: 10px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .go-btn:hover { background: #047857; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <span class="badge">⚙ LOCAL DEV ONLY</span>
+  <h1>Spring AI Engineering</h1>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('login')">Login</div>
+    <div class="tab"        onclick="switchTab('register')">Register</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="panel-login" class="panel active">
+    <label for="l-email">Email</label>
+    <input id="l-email" type="email" value="dev@example.com" />
+
+    <label for="l-password">Password</label>
+    <input id="l-password" type="password" value="DevPassword123!" />
+
+    <button onclick="doLogin()">Login</button>
+
+    <div id="login-result" class="result"></div>
+    <a id="goto-chat" class="go-btn" href="chat.html">Go to Chat →</a>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="panel-register" class="panel">
+    <label for="r-name">Display Name</label>
+    <input id="r-name" type="text" value="Dev User" />
+
+    <label for="r-email">Email</label>
+    <input id="r-email" type="email" value="dev@example.com" />
+
+    <label for="r-password">Password</label>
+    <input id="r-password" type="password" value="DevPassword123!" />
+
+    <button onclick="doRegister()">Register</button>
+
+    <div id="register-result" class="result"></div>
+  </div>
+</div>
+
+<script>
+  const BASE = 'http://localhost:8080';
+
+  /* ── Tab switching ── */
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', ['login','register'][i] === name));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+  }
+
+  /* ── Login ── */
+  async function doLogin() {
+    const btn = document.querySelector('#panel-login button');
+    const res = document.getElementById('login-result');
+    const gotoChat = document.getElementById('goto-chat');
+    btn.disabled = true;
+    res.style.display = 'none';
+
+    try {
+      const r = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:    document.getElementById('l-email').value.trim(),
+          password: document.getElementById('l-password').value
+        })
+      });
+      const data = await r.json();
+
+      if (!r.ok) {
+        showResult(res, 'error', `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        return;
+      }
+
+      // Store token for chat page
+      localStorage.setItem('token', data.accessToken ?? data.token);
+      localStorage.setItem('tokenType', data.tokenType ?? 'Bearer');
+
+      showResult(res, 'success', `✓ Logged in successfully!\n\nToken stored in localStorage.\n\n`
+        + `<div class="token-box">${data.accessToken ?? data.token}</div>`);
+      gotoChat.style.display = 'block';
+
+    } catch (e) {
+      showResult(res, 'error', `Network error — is the server running on :8080?\n${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /* ── Register ── */
+  async function doRegister() {
+    const btn = document.querySelector('#panel-register button');
+    const res = document.getElementById('register-result');
+    btn.disabled = true;
+    res.style.display = 'none';
+
+    try {
+      const r = await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayName: document.getElementById('r-name').value.trim(),
+          email:       document.getElementById('r-email').value.trim(),
+          password:    document.getElementById('r-password').value
+        })
+      });
+      const data = await r.json();
+
+      if (!r.ok) {
+        showResult(res, 'error', `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        return;
+      }
+      showResult(res, 'success', `✓ Registered! id=${data.id}, email=${data.email}\n\nSwitch to Login tab to get a token.`);
+
+    } catch (e) {
+      showResult(res, 'error', `Network error — is the server running on :8080?\n${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /* ── Helpers ── */
+  function showResult(el, type, html) {
+    el.className = 'result ' + type;
+    el.innerHTML = html.replace(/\n/g, '<br>');
+    el.style.display = 'block';
+  }
+
+  // If already logged in, show the chat link immediately
+  if (localStorage.getItem('token')) {
+    document.getElementById('goto-chat').style.display = 'block';
+  }
+</script>
+</body>
+</html>
