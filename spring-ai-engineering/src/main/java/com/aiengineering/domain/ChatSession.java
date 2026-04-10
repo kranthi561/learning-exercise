@@ -22,7 +22,12 @@ public class ChatSession extends BaseAuditingEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Many sessions can belong to one user.
+    // FetchType.LAZY means the User is NOT loaded from the DB until explicitly accessed —
+    // this avoids an unnecessary JOIN on every session query.
+    // optional = false adds a NOT NULL constraint at the JPA level.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    // Maps the foreign-key column in the chat_sessions table to the users.id primary key.
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 

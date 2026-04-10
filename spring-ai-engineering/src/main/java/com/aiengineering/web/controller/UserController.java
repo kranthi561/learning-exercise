@@ -25,9 +25,9 @@ public class UserController {
     private final UserService userService;
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);
 
-
     @GetMapping("/me")
     UserResponse me() {
+        logger.debug("me: resolving current user");
         UserPrincipal principal = SecurityUtils.requireCurrentUser();
         logger.info("Principal: {}", principal);
         return userService.getById(principal.id());
@@ -35,6 +35,7 @@ public class UserController {
 
     @GetMapping("/search")
     List<UserSummaryResponse> search(@RequestParam String q) {
+        logger.debug("search: q={}", q);
         SecurityUtils.requireCurrentUser();
         return userService.searchSummaries(q);
     }

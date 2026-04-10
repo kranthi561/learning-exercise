@@ -15,12 +15,15 @@ public class LoggingInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        log.debug("preHandle: method={}, uri={}", request.getMethod(), request.getRequestURI());
+        // Store the start time on the request so afterCompletion can read it.
         request.setAttribute(START_TIME_ATTR, System.currentTimeMillis());
         return true;
     }
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        log.debug("afterCompletion: uri={}, status={}", request.getRequestURI(), response.getStatus());
         Long startTime = (Long) request.getAttribute(START_TIME_ATTR);
         if (startTime == null) return;
         long durationMs = System.currentTimeMillis() - startTime;

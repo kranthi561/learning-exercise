@@ -14,6 +14,7 @@ services:
       DB_NAME: aiengineering
       DB_USER: aiengineering
       DB_PASSWORD: aiengineering
+      LOG_LEVEL: DEBUG
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       # Set in shell or a .env file next to docker-compose.yml

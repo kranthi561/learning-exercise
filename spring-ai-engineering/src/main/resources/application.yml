@@ -26,4 +26,11 @@ management:
 logging:
   level:
     root: INFO
-    com.aiengineering: INFO
+    com.aiengineering: ${LOG_LEVEL:INFO}
+
+app:
+  rate-limit:
+    auth-requests-per-minute: ${RATE_LIMIT_AUTH:10}
+    api-requests-per-minute: ${RATE_LIMIT_API:60}
+    chat-requests-per-minute: ${RATE_LIMIT_CHAT:20}
+    window-seconds: ${RATE_LIMIT_WINDOW:60}

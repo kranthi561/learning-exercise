@@ -20,7 +20,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
-        log.error("Validation failed: {}", ex.getMessage());
+        log.debug("handleValidation: {}", ex.getMessage());
         var details = ex.getBindingResult().getFieldErrors().stream()
                 .map(err -> err.getField() + ": " + err.getDefaultMessage())
                 .collect(Collectors.toList());
@@ -31,7 +31,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
-        log.error("Resource not found: {}", ex.getMessage());
+        log.debug("handleNotFound: {}", ex.getMessage());
         var body = ErrorResponse.of(
                 HttpStatus.NOT_FOUND.value(), "Not found", ex.getMessage(), java.util.List.of());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
@@ -39,15 +39,25 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BadCredentialsException.class)
     ResponseEntity<ErrorResponse> handleBadCredentials(BadCredentialsException ex) {
-        log.error("Bad credentials: {}", ex.getMessage());
+        log.debug("handleBadCredentials: {}", ex.getMessage());
         var body = ErrorResponse.of(
                 HttpStatus.UNAUTHORIZED.value(), "Unauthorized", "Invalid credentials", java.util.List.of());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<ErrorResponse> handleRateLimit(RateLimitExceededException ex) {
+        log.debug("handleRateLimit: retryAfter={}", ex.getRetryAfterSeconds());
+        var body = ErrorResponse.of(
+                HttpStatus.TOO_MANY_REQUESTS.value(), "Too Many Requests", ex.getMessage(), java.util.List.of());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(body);
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
-        log.error("Access denied: {}", ex.getMessage());
+        log.debug("handleAccessDenied: {}", ex.getMessage());
         var body = ErrorResponse.of(
                 HttpStatus.FORBIDDEN.value(), "Forbidden", ex.getMessage(), java.util.List.of());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
@@ -55,7 +65,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
-        log.error("Illegal argument: {}", ex.getMessage());
+        log.debug("handleIllegalArgument: {}", ex.getMessage());
         var body = ErrorResponse.of(
                 HttpStatus.BAD_REQUEST.value(), "Bad request", ex.getMessage(), java.util.List.of());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
@@ -63,7 +73,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex) {
-        log.error("Illegal state: {}", ex.getMessage());
+        log.debug("handleIllegalState: {}", ex.getMessage());
         var body = ErrorResponse.of(
                 HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ex.getMessage(), java.util.List.of());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
@@ -71,7 +81,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
-        log.error("Unhandled exception: {}", ex.getMessage());
+        log.debug("handleGeneric: {}", ex.getMessage());
         var body = ErrorResponse.of(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal error",

@@ -10,11 +10,13 @@ import com.aiengineering.web.exception.ResourceNotFoundException;
 import com.aiengineering.web.mapper.ChatSessionMapper;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ChatSessionService {
 
     private final ChatSessionRepository chatSessionRepository;
@@ -23,7 +25,9 @@ public class ChatSessionService {
 
     @Transactional
     public ChatSessionResponse create(long userId, ChatSessionCreateRequest request) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        log.debug("create: userId={}, title={}", userId, request.title());
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         ChatSession session = new ChatSession();
         session.setUser(user);
         session.setTitle(request.title().strip());
@@ -33,6 +37,7 @@ public class ChatSessionService {
 
     @Transactional(readOnly = true)
     public List<ChatSessionResponse> list(long userId) {
+        log.debug("list: userId={}", userId);
         return chatSessionRepository.listForUser(userId).stream()
                 .map(chatSessionMapper::fromListProjection)
                 .toList();

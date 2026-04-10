@@ -7,6 +7,7 @@ import com.aiengineering.web.dto.auth.TokenResponse;
 import com.aiengineering.web.dto.user.UserResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthController {
 
     private final UserService userService;
@@ -24,11 +26,13 @@ public class AuthController {
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     UserResponse register(@Valid @RequestBody RegisterRequest request) {
+        log.debug("register: email={}", request.email());
         return userService.register(request);
     }
 
     @PostMapping("/login")
     TokenResponse login(@Valid @RequestBody LoginRequest request) {
+        log.debug("login: email={}", request.email());
         return userService.login(request);
     }
 }

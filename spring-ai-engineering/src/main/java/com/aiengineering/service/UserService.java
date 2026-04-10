@@ -13,6 +13,7 @@ import com.aiengineering.web.exception.ResourceNotFoundException;
 import com.aiengineering.web.mapper.UserMapper;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
@@ -30,6 +32,7 @@ public class UserService {
 
     @Transactional
     public UserResponse register(RegisterRequest request) {
+        log.debug("register: email={}", request.email());
         if (userRepository.existsByEmailIgnoreCase(request.email())) {
             throw new IllegalArgumentException("Email already registered");
         }
@@ -42,6 +45,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public TokenResponse login(LoginRequest request) {
+        log.debug("login: email={}", request.email());
         User user = userRepository
                 .findByEmailIgnoreCase(request.email().strip().toLowerCase())
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
@@ -54,6 +58,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserResponse getById(long id) {
+        log.debug("getById: id={}", id);
         return userRepository
                 .findById(id)
                 .map(userMapper::toResponse)
@@ -62,6 +67,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<UserSummaryResponse> searchSummaries(String q) {
+        log.debug("searchSummaries: q={}", q);
         if (q == null || q.isBlank()) {
             return List.of();
         }
