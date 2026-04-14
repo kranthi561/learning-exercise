@@ -11,6 +11,10 @@ import org.springframework.ai.chat.messages.Message;            // Common interf
 import org.springframework.ai.chat.messages.UserMessage;        // Wraps a past user turn for inclusion in history
 import org.springframework.ai.chat.model.ChatResponse;          // Full response object from the model (content + metadata)
 import org.springframework.ai.document.Document;                // A knowledge document stored in the vector store
+import org.springframework.ai.image.ImageModel;                 // Spring AI abstraction for image generation (DALL-E etc.)
+import org.springframework.ai.image.ImagePrompt;                // Wraps the text prompt sent to the image model
+import org.springframework.ai.image.ImageResponse;              // Full response from the image model (URLs or base64)
+import org.springframework.ai.openai.OpenAiImageOptions;        // OpenAI-specific options (model, size, quality, n)
 import org.springframework.ai.vectorstore.SearchRequest;        // Builder for similarity search parameters
 import org.springframework.ai.vectorstore.VectorStore;          // Abstraction over PgVector for RAG retrieval
 import org.springframework.stereotype.Service;
@@ -24,6 +28,8 @@ import com.aiengineering.repository.ChatMessageRepository;
 import com.aiengineering.repository.ChatSessionRepository;
 import com.aiengineering.web.dto.chat.AgentReplyResponse;
 import com.aiengineering.web.dto.chat.ChatMessageRequest;
+import com.aiengineering.web.dto.chat.ImageGenerateRequest;
+import com.aiengineering.web.dto.chat.ImageGenerateResponse;
 import com.aiengineering.web.exception.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
@@ -53,6 +59,10 @@ public class AgentService {
     // Spring AI's fluent chat client — pre-configured in AiClientConfig with
     // the default system prompt and the AgentTools function-calling tools.
     private final ChatClient chatClient;
+
+    // Spring AI image model — auto-configured by spring-ai-starter-model-openai.
+    // Backed by OpenAI DALL-E; called only when the user explicitly requests image generation.
+    private final ImageModel imageModel;
 
     // PgVector-backed store; used to retrieve semantically similar documents (RAG).
     // Spring AI auto-configures this from the pgvector properties in application-dev.yml.
@@ -193,6 +203,46 @@ public class AgentService {
             // the failure count and latency even for errored calls.
             agentMetrics.recordFailure(elapsed);
             throw ex; // re-throw so GlobalExceptionHandler can return the appropriate HTTP status
+        }
+    }
+
+    // Calls DALL-E to generate images for the given prompt.
+    // Ownership check is the same pattern as chat() — the session must belong to this user.
+    public ImageGenerateResponse generateImage(long userId, long sessionId, ImageGenerateRequest request) {
+        log.debug("generateImage: userId={}, sessionId={}, prompt={}", userId, sessionId, request.prompt());
+
+        // Verify the session exists and belongs to this user before spending API credits.
+        chatSessionRepository
+                .findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat session not found"));
+
+        // Build the image request — uses dall-e-3 which supports only n=1;
+        // switch to dall-e-2 if you need n > 1.
+        ImagePrompt imagePrompt = new ImagePrompt(
+                request.prompt(),
+                OpenAiImageOptions.builder()
+                        .model("dall-e-3")
+                        .quality("standard")
+                        .height(1024)
+                        .width(1024)
+                        .build());
+
+        long start = System.nanoTime();
+        try {
+            ImageResponse imageResponse = imageModel.call(imagePrompt);
+
+            // Collect URLs from all returned image results.
+            List<String> urls = imageResponse.getResults().stream()
+                    .map(result -> result.getOutput().getUrl())
+                    .toList();
+
+            long elapsed = System.nanoTime() - start;
+            log.debug("generateImage: got {} url(s) in {}ms", urls.size(), elapsed / 1_000_000);
+            return new ImageGenerateResponse(urls, elapsed / 1_000_000);
+
+        } catch (RuntimeException ex) {
+            log.error("Image generation failed: {}", ex.getMessage());
+            throw ex;
         }
     }
 

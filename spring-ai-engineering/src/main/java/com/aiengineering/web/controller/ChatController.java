@@ -10,6 +10,8 @@ import com.aiengineering.web.dto.chat.ChatMessageRequest;
 import com.aiengineering.web.dto.chat.ChatMessageResponse;
 import com.aiengineering.web.dto.chat.ChatSessionCreateRequest;
 import com.aiengineering.web.dto.chat.ChatSessionResponse;
+import com.aiengineering.web.dto.chat.ImageGenerateRequest;
+import com.aiengineering.web.dto.chat.ImageGenerateResponse;
 import com.aiengineering.web.mapper.ChatMessageMapper;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -56,6 +58,14 @@ public class ChatController {
         log.debug("sendMessage: sessionId={}", sessionId);
         UserPrincipal user = SecurityUtils.requireCurrentUser();
         return agentService.chat(user.id(), sessionId, request);
+    }
+
+    @PostMapping("/sessions/{sessionId}/images")
+    ImageGenerateResponse generateImage(
+            @PathVariable long sessionId, @Valid @RequestBody ImageGenerateRequest request) {
+        log.debug("generateImage: sessionId={}", sessionId);
+        UserPrincipal user = SecurityUtils.requireCurrentUser();
+        return agentService.generateImage(user.id(), sessionId, request);
     }
 
     @GetMapping("/sessions/{sessionId}/messages")

@@ -106,6 +106,9 @@
     .btn-green:disabled { background: #6ee7b7; cursor: not-allowed; }
     .btn-clear { background: #f3f4f6; color: #374151; }
     .btn-clear:hover { background: #e5e7eb; }
+    .btn-image { background: #7c3aed; color: #fff; }
+    .btn-image:hover { background: #6d28d9; }
+    .btn-image:disabled { background: #c4b5fd; cursor: not-allowed; }
 
     /* ── Session info chip ── */
     .session-chip {
@@ -308,6 +311,32 @@
     }
     .typing.show { display: block; }
 
+    /* Generated image inside a bubble */
+    .msg-image .msg-bubble {
+      align-self: flex-start;
+      background: #f3f4f6;
+      color: #1f2937;
+      border-bottom-left-radius: 4px;
+      padding: 8px;
+    }
+    .msg-image .msg-label { align-self: flex-start; }
+    .msg-image .msg-meta  { align-self: flex-start; }
+    .msg-image img {
+      max-width: 480px;
+      width: 100%;
+      border-radius: 8px;
+      display: block;
+      cursor: pointer;
+    }
+    .img-open-link {
+      display: block;
+      font-size: 11px;
+      color: #7c3aed;
+      margin-top: 5px;
+      text-decoration: none;
+    }
+    .img-open-link:hover { text-decoration: underline; }
+
     /* Empty state */
     .empty-state {
       flex: 1;
@@ -422,7 +451,7 @@
         </div>
       </div>
 
-      <div class="typing" id="typing">AI is thinking…</div>
+      <div class="typing" id="typing"></div>
 
       <div id="send-err" class="inline-err"></div>
 
@@ -431,7 +460,10 @@
                   placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
                   rows="2"
                   onkeydown="onMsgKeydown(event)"></textarea>
-        <button class="btn btn-green" id="btn-send" onclick="sendMessage()">Send</button>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <button class="btn btn-green" id="btn-send" onclick="sendMessage()">Send</button>
+          <button class="btn btn-image" id="btn-image" onclick="generateImage()" title="Generate image from your prompt">🖼 Image</button>
+        </div>
       </div>
     </div>
   </div>
@@ -523,6 +555,63 @@
     chip.style.display = 'flex';
   }
 
+  /* ── Generate image ── */
+  async function generateImage() {
+    const input = document.getElementById('msg-input');
+    const prompt = input.value.trim();
+    if (!prompt) return;
+
+    if (!activeSessionId) {
+      showErr(document.getElementById('send-err'), 'Create a session first (or enter a session ID manually).');
+      return;
+    }
+
+    const btnSend  = document.getElementById('btn-send');
+    const btnImage = document.getElementById('btn-image');
+    const errEl    = document.getElementById('send-err');
+    errEl.style.display = 'none';
+
+    // Show the user's prompt as their message, then clear input
+    appendBubble('user', prompt);
+    input.value = '';
+    input.style.height = 'auto';
+
+    btnSend.disabled  = true;
+    btnImage.disabled = true;
+    showTyping(true, 'Generating image…');
+
+    try {
+      const r = await fetch(`${BASE}/api/v1/chat/sessions/${activeSessionId}/images`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ prompt })
+      });
+      const data = await r.json();
+
+      document.getElementById('raw-response').textContent = JSON.stringify(data, null, 2);
+
+      if (!r.ok) {
+        showErr(errEl, `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        return;
+      }
+
+      const urls = data.imageUrls ?? [];
+      if (urls.length === 0) {
+        showErr(errEl, 'No images returned.');
+        return;
+      }
+      const meta = `${data.latencyMs ?? '?'}ms`;
+      appendImageBubble(urls, meta);
+
+    } catch (e) {
+      showErr(errEl, `Network error: ${e.message}`);
+    } finally {
+      btnSend.disabled  = false;
+      btnImage.disabled = false;
+      showTyping(false);
+    }
+  }
+
   /* ── Send message ── */
   async function sendMessage() {
     const input = document.getElementById('msg-input');
@@ -573,6 +662,59 @@
       btn.disabled = false;
       showTyping(false);
     }
+  }
+
+  /* ── Image bubble ── */
+  function appendImageBubble(urls, meta) {
+    const log = document.getElementById('message-log');
+
+    if (log.classList.contains('collapsed')) {
+      log.classList.remove('collapsed');
+      document.getElementById('btn-toggle').textContent = 'Hide';
+    }
+    const empty = log.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    const row = document.createElement('div');
+    row.className = 'msg-row msg-image';
+
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = 'Assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+
+    urls.forEach(url => {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'Generated image';
+      img.loading = 'lazy';
+      // Click image to open full-size in new tab
+      img.addEventListener('click', () => window.open(url, '_blank'));
+
+      const link = document.createElement('a');
+      link.className = 'img-open-link';
+      link.href = url;
+      link.target = '_blank';
+      link.textContent = 'Open full size ↗';
+
+      bubble.appendChild(img);
+      bubble.appendChild(link);
+    });
+
+    row.appendChild(label);
+    row.appendChild(bubble);
+
+    if (meta) {
+      const m = document.createElement('div');
+      m.className = 'msg-meta';
+      m.textContent = meta;
+      row.appendChild(m);
+    }
+
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
   }
 
   /* ── Chat rendering ── */
@@ -656,8 +798,10 @@
     document.getElementById('send-err').style.display = 'none';
   }
 
-  function showTyping(show) {
-    document.getElementById('typing').classList.toggle('show', show);
+  function showTyping(show, msg = 'AI is thinking…') {
+    const el = document.getElementById('typing');
+    el.textContent = msg;
+    el.classList.toggle('show', show);
   }
 
   /* ── Keyboard shortcut: Enter sends, Shift+Enter = new line ── */
