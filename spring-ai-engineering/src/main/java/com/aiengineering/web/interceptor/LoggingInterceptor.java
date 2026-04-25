@@ -1,32 +1,55 @@
 package com.aiengineering.web.interceptor;
 
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.HandlerInterceptor;
+import java.io.IOException;
+import java.util.UUID;
 
+import org.slf4j.MDC;
+import org.springframework.core.annotation.Order;
+import org.springframework.lang.NonNull;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 
+// Order(1): runs before RateLimitFilter(@Order(2)) so every log line produced by
+// downstream filters and the application already carries [requestId] in MDC.
 @Slf4j
 @Component
-public class LoggingInterceptor implements HandlerInterceptor {
+@Order(1)
+public class LoggingInterceptor extends OncePerRequestFilter {
 
-    private static final String START_TIME_ATTR = "requestStartTime";
-
-    @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        log.debug("preHandle: method={}, uri={}", request.getMethod(), request.getRequestURI());
-        // Store the start time on the request so afterCompletion can read it.
-        request.setAttribute(START_TIME_ATTR, System.currentTimeMillis());
-        return true;
-    }
+    private static final String REQUEST_ID_HEADER = "X-Request-ID";
+    private static final String MDC_KEY           = "requestId";
 
     @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        log.debug("afterCompletion: uri={}, status={}", request.getRequestURI(), response.getStatus());
-        Long startTime = (Long) request.getAttribute(START_TIME_ATTR);
-        if (startTime == null) return;
-        long durationMs = System.currentTimeMillis() - startTime;
-        log.info("{} {} -> {} | {}ms", request.getMethod(), request.getRequestURI(), response.getStatus(), durationMs);
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain chain) throws ServletException, IOException {
+
+        String requestId = request.getHeader(REQUEST_ID_HEADER);
+        if (requestId == null || requestId.isBlank()) {
+            requestId = UUID.randomUUID().toString();
+        }
+
+        MDC.put(MDC_KEY, requestId);
+        response.setHeader(REQUEST_ID_HEADER, requestId);
+
+        log.debug("request: method={}, uri={}", request.getMethod(), request.getRequestURI());
+        long startTime = System.currentTimeMillis();
+
+        try {
+            chain.doFilter(request, response);
+        } finally {
+            long durationMs = System.currentTimeMillis() - startTime;
+            log.info("{} {} -> {} | {}ms",
+                    request.getMethod(), request.getRequestURI(), response.getStatus(), durationMs);
+            // Always clear MDC — the servlet container reuses threads across requests.
+            MDC.remove(MDC_KEY);
+        }
     }
 }

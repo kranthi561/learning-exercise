@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
@@ -20,9 +21,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+// Order(2): runs after LoggingInterceptor(@Order(1)) so MDC already has [requestId]
+// when rate-limit log lines are emitted.
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@Order(2)
 public class RateLimitFilter extends OncePerRequestFilter {
 
     // Lua script executed atomically inside Redis.

@@ -18,6 +18,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -58,6 +60,14 @@ public class ChatController {
         log.debug("sendMessage: sessionId={}", sessionId);
         UserPrincipal user = SecurityUtils.requireCurrentUser();
         return agentService.chat(user.id(), sessionId, request);
+    }
+
+    @PostMapping(value = "/sessions/{sessionId}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    Flux<String> streamMessage(
+            @PathVariable long sessionId, @Valid @RequestBody ChatMessageRequest request) {
+        log.debug("streamMessage: sessionId={}", sessionId);
+        UserPrincipal user = SecurityUtils.requireCurrentUser();
+        return agentService.streamChat(user.id(), sessionId, request);
     }
 
     @PostMapping("/sessions/{sessionId}/images")

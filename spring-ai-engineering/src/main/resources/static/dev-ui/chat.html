@@ -109,6 +109,42 @@
     .btn-image { background: #7c3aed; color: #fff; }
     .btn-image:hover { background: #6d28d9; }
     .btn-image:disabled { background: #c4b5fd; cursor: not-allowed; }
+    .btn-stream { background: #0891b2; color: #fff; }
+    .btn-stream:hover { background: #0e7490; }
+    .btn-stream:disabled { background: #7dd3e0; cursor: not-allowed; }
+
+    /* Blinking cursor shown inside the assistant bubble while tokens arrive */
+    .stream-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 13px;
+      background: #6b7280;
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      animation: blink 0.9s step-end infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* Format toggle bar appended below completed stream bubbles */
+    .format-toggle {
+      display: flex;
+      gap: 4px;
+      align-self: flex-start;
+      margin-top: 5px;
+    }
+    .fmt-btn {
+      padding: 2px 10px;
+      border: 1.5px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #fff;
+      color: #6b7280;
+      cursor: pointer;
+      transition: border-color .12s, color .12s, background .12s;
+    }
+    .fmt-btn:hover { border-color: #4f46e5; color: #4f46e5; }
+    .fmt-btn.fmt-active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
 
     /* ── Session info chip ── */
     .session-chip {
@@ -461,8 +497,9 @@
                   rows="2"
                   onkeydown="onMsgKeydown(event)"></textarea>
         <div style="display:flex; flex-direction:column; gap:6px">
-          <button class="btn btn-green" id="btn-send" onclick="sendMessage()">Send</button>
-          <button class="btn btn-image" id="btn-image" onclick="generateImage()" title="Generate image from your prompt">🖼 Image</button>
+          <button class="btn btn-green"  id="btn-send"   onclick="sendMessage()"   title="Send and wait for the full reply">Send</button>
+          <button class="btn btn-stream" id="btn-stream" onclick="streamMessage()" title="Stream reply token-by-token (SSE)">⚡ Stream</button>
+          <button class="btn btn-image"  id="btn-image"  onclick="generateImage()" title="Generate image from your prompt">🖼 Image</button>
         </div>
       </div>
     </div>
@@ -518,7 +555,7 @@
     try {
       const r = await fetch(`${BASE}/api/v1/chat/sessions`, {
         method: 'POST',
-        headers: authHeaders(),
+        headers: { ...authHeaders(), 'X-Request-ID': crypto.randomUUID() },
         body: JSON.stringify({ title: document.getElementById('session-title').value.trim() })
       });
       const data = await r.json();
@@ -580,10 +617,11 @@
     btnImage.disabled = true;
     showTyping(true, 'Generating image…');
 
+    const reqId = crypto.randomUUID();
     try {
       const r = await fetch(`${BASE}/api/v1/chat/sessions/${activeSessionId}/images`, {
         method: 'POST',
-        headers: authHeaders(),
+        headers: { ...authHeaders(), 'X-Request-ID': reqId },
         body: JSON.stringify({ prompt })
       });
       const data = await r.json();
@@ -600,7 +638,7 @@
         showErr(errEl, 'No images returned.');
         return;
       }
-      const meta = `${data.latencyMs ?? '?'}ms`;
+      const meta = `req: ${reqId.slice(0, 8)}  •  ${data.latencyMs ?? '?'}ms`;
       appendImageBubble(urls, meta);
 
     } catch (e) {
@@ -635,10 +673,11 @@
     btn.disabled = true;
     showTyping(true);
 
+    const reqId = crypto.randomUUID();
     try {
       const r = await fetch(`${BASE}/api/v1/chat/sessions/${activeSessionId}/messages`, {
         method: 'POST',
-        headers: authHeaders(),
+        headers: { ...authHeaders(), 'X-Request-ID': reqId },
         body: JSON.stringify({ content })
       });
       const data = await r.json();
@@ -653,7 +692,7 @@
 
       // Extract assistant text from the correct DTO field
       const replyText = data.assistantMessage ?? data.reply ?? data.content ?? JSON.stringify(data);
-      const meta = `RAG chunks: ${data.ragChunksUsed ?? data.ragDocuments ?? 0}  •  ${data.latencyMs ?? data.durationMs ?? '?'}ms`;
+      const meta = `req: ${reqId.slice(0, 8)}  •  RAG: ${data.ragChunksUsed ?? data.ragDocuments ?? 0}  •  ${data.latencyMs ?? data.durationMs ?? '?'}ms`;
       appendBubble('assistant', replyText, meta);
 
     } catch (e) {
@@ -744,21 +783,7 @@
     if (role === 'assistant') {
       // Parse Markdown → HTML so the AI's formatting (bold, code, lists, tables) renders correctly
       bubble.innerHTML = marked.parse(text);
-      // Attach copy buttons to every fenced code block
-      bubble.querySelectorAll('pre').forEach(pre => {
-        const btn = document.createElement('button');
-        btn.className = 'copy-code-btn';
-        btn.textContent = 'Copy';
-        btn.addEventListener('click', () => {
-          const code = pre.querySelector('code');
-          navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(() => {
-            btn.textContent = 'Copied!';
-            btn.classList.add('copied');
-            setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
-          });
-        });
-        pre.appendChild(btn);
-      });
+      addCopyButtons(bubble);
     } else {
       // User messages are plain text — escape to prevent XSS, then preserve newlines
       bubble.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
@@ -777,6 +802,196 @@
     log.appendChild(row);
     // Scroll to bottom after every bubble so the latest content is always in view
     log.scrollTop = log.scrollHeight;
+  }
+
+  /* ── Shared helper: attach Copy buttons to <pre> blocks inside a bubble ── */
+  function addCopyButtons(bubble) {
+    bubble.querySelectorAll('pre').forEach(pre => {
+      const btn = document.createElement('button');
+      btn.className = 'copy-code-btn';
+      btn.textContent = 'Copy';
+      btn.addEventListener('click', () => {
+        const code = pre.querySelector('code');
+        navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(() => {
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+        });
+      });
+      pre.appendChild(btn);
+    });
+  }
+
+  /* ── Creates an empty assistant bubble in the log and returns {row, bubble} for live updates ── */
+  function createStreamingBubble() {
+    const log = document.getElementById('message-log');
+    if (log.classList.contains('collapsed')) {
+      log.classList.remove('collapsed');
+      document.getElementById('btn-toggle').textContent = 'Hide';
+    }
+    const empty = log.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    const row    = document.createElement('div');
+    row.className = 'msg-row msg-assistant';
+
+    const label  = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = 'Assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    // Placeholder cursor so the bubble is visible before any token arrives
+    bubble.innerHTML = '<span class="stream-cursor"></span>';
+
+    row.appendChild(label);
+    row.appendChild(bubble);
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+    return { row, bubble };
+  }
+
+  /* ── Stream message via SSE (POST → text/event-stream) ── */
+  async function streamMessage() {
+    const input   = document.getElementById('msg-input');
+    const content = input.value.trim();
+    if (!content) return;
+
+    if (!activeSessionId) {
+      showErr(document.getElementById('send-err'), 'Create a session first (or enter a session ID manually).');
+      return;
+    }
+
+    const btnSend   = document.getElementById('btn-send');
+    const btnStream = document.getElementById('btn-stream');
+    const btnImage  = document.getElementById('btn-image');
+    const errEl     = document.getElementById('send-err');
+    errEl.style.display = 'none';
+
+    appendBubble('user', content);
+    input.value = '';
+    input.style.height = 'auto';
+
+    btnSend.disabled   = true;
+    btnStream.disabled = true;
+    btnImage.disabled  = true;
+    showTyping(true, 'Streaming…');
+
+    const { row, bubble } = createStreamingBubble();
+    let accumulated = '';
+    const reqId = crypto.randomUUID();
+
+    try {
+      const r = await fetch(`${BASE}/api/v1/chat/sessions/${activeSessionId}/messages/stream`, {
+        method:  'POST',
+        headers: { ...authHeaders(), 'X-Request-ID': reqId },
+        body:    JSON.stringify({ content })
+      });
+
+      if (!r.ok) {
+        // Non-streaming error — parse body as JSON for the error message
+        const data = await r.json().catch(() => ({}));
+        showErr(errEl, `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        row.remove();
+        return;
+      }
+
+      showTyping(false); // hide indicator — tokens take over as feedback
+
+      const reader  = r.body.getReader();
+      const decoder = new TextDecoder();
+      const log     = document.getElementById('message-log');
+      let sseBuffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        sseBuffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by double newlines (\n\n).
+        // Process only complete events; keep any trailing partial event in the buffer.
+        let boundary;
+        while ((boundary = sseBuffer.indexOf('\n\n')) !== -1) {
+          const event = sseBuffer.slice(0, boundary);
+          sseBuffer   = sseBuffer.slice(boundary + 2);
+
+          // SSE spec: multiple data: lines in one event are joined with \n.
+          // A bare "data:\n" (empty value) represents a newline token — the model
+          // emits these for paragraph breaks, list items, and code-fence boundaries.
+          // Concatenating with += would drop them; joining preserves them.
+          const dataLines = event.split('\n')
+            .filter(l => l.startsWith('data:'))
+            .map(l => l.slice(5));         // strip "data:" prefix
+          if (dataLines.length > 0) {
+            accumulated += dataLines.join('\n');
+          }
+        }
+
+        // Live Markdown render so code blocks / bold / lists format as tokens arrive.
+        // marked.parse() handles partial fenced code blocks gracefully.
+        bubble.innerHTML = marked.parse(accumulated);
+        bubble.appendChild(Object.assign(document.createElement('span'), { className: 'stream-cursor' }));
+        log.scrollTop = log.scrollHeight;
+      }
+
+      // Stream complete — final Markdown render and copy buttons
+      bubble.innerHTML = marked.parse(accumulated);
+      addCopyButtons(bubble);
+
+      // Format toggle bar: Markdown (default) ↔ Raw
+      const toggleBar = document.createElement('div');
+      toggleBar.className = 'format-toggle';
+
+      const mdBtn  = document.createElement('button');
+      mdBtn.className  = 'fmt-btn fmt-active';
+      mdBtn.textContent = 'Markdown';
+
+      const rawBtn = document.createElement('button');
+      rawBtn.className  = 'fmt-btn';
+      rawBtn.textContent = 'Raw';
+
+      mdBtn.addEventListener('click', () => {
+        if (mdBtn.classList.contains('fmt-active')) return;
+        bubble.innerHTML = marked.parse(accumulated);
+        addCopyButtons(bubble);
+        mdBtn.classList.add('fmt-active');
+        rawBtn.classList.remove('fmt-active');
+      });
+
+      rawBtn.addEventListener('click', () => {
+        if (rawBtn.classList.contains('fmt-active')) return;
+        // Show raw text in a <pre> so whitespace and newlines are preserved exactly
+        bubble.innerHTML = '';
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'white-space:pre-wrap; word-break:break-all; font-size:13px; margin:0;';
+        pre.textContent = accumulated;
+        bubble.appendChild(pre);
+        rawBtn.classList.add('fmt-active');
+        mdBtn.classList.remove('fmt-active');
+      });
+
+      toggleBar.appendChild(mdBtn);
+      toggleBar.appendChild(rawBtn);
+      row.appendChild(toggleBar);
+
+      const metaEl = document.createElement('div');
+      metaEl.className = 'msg-meta';
+      metaEl.textContent = `req: ${reqId.slice(0, 8)}  •  streamed`;
+      row.appendChild(metaEl);
+      log.scrollTop = log.scrollHeight;
+
+      document.getElementById('raw-response').textContent = accumulated;
+
+    } catch (e) {
+      showErr(errEl, `Stream error: ${e.message}`);
+      row.remove();
+    } finally {
+      btnSend.disabled   = false;
+      btnStream.disabled = false;
+      btnImage.disabled  = false;
+      showTyping(false);
+    }
   }
 
   /* ── Hide / show the message log ── */

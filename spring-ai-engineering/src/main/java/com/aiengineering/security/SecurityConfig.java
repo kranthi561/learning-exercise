@@ -1,5 +1,6 @@
 package com.aiengineering.security;
 
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -46,6 +47,11 @@ public class SecurityConfig {
             .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
 
             .authorizeHttpRequests(auth -> auth
+                // ASYNC dispatch is the internal re-dispatch Spring uses to complete SSE / async
+                // responses. JwtAuthenticationFilter (OncePerRequestFilter) skips it by default,
+                // so the SecurityContext is empty on the async dispatch — without this rule
+                // AuthorizationFilter throws Access Denied on an already-committed SSE response.
+                .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 // Allow register and login without a token — anyone can create an account or sign in.
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/**").permitAll()
                 // Allow health/metrics endpoints for load-balancers and monitoring without auth.

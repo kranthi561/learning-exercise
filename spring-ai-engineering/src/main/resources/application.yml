@@ -35,14 +35,15 @@ logging:
     #   ---              visual separator
     #   [%15.15t]        thread name, truncated/padded to 15 chars
     #   %-40.40logger{39} logger class name (package abbreviated), fixed 40-char column
+    #   :%4L             source line number (4 chars); uses stack introspection — acceptable cost for dev
     #   :                separator
     #   %m               the log message
     #   %n               platform line separator
     #   %wEx             exception stack trace with Spring Boot's whitespace-trimming wrapper
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%15.15t] %-40.40logger{39} : %m%n%wEx"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%15.15t] [%X{requestId}] %-40.40logger{39}:%4L : %m%n%wEx"
 
     # File pattern — same as console but without ANSI colour codes so log files stay readable
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%15.15t] %-40.40logger{39} : %m%n%wEx"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%15.15t] [%X{requestId}] %-40.40logger{39}:%4L : %m%n%wEx"
 
 app:
   rate-limit:

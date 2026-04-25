@@ -1,10 +1,13 @@
 package com.aiengineering.agent;
 
 import com.aiengineering.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.stereotype.Component;
 
 // Registers this class as a Spring-managed bean so it can be injected
@@ -47,5 +50,29 @@ public class AgentTools {
         // toHexString gives a short, URL-safe representation.
         return "ExternalRef[%s]=demo-%s"
                 .formatted(topic, Integer.toHexString(Objects.hash(Objects.requireNonNullElse(topic, ""))));
+    }
+
+    @Tool(description = "Get the current date and time in ISO-8601 format.")
+    public String getCurrentDateTime() {
+        String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        log.debug("getCurrentDateTime: {}", now);
+        return now;
+    }
+
+    // Whitelist guards against SpEL code injection — only digits, operators, and parentheses pass.
+    @Tool(description = "Evaluate a basic arithmetic expression (+, -, *, /, parentheses) and return the result.")
+    public String calculate(
+            @ToolParam(description = "Arithmetic expression, e.g. '(2 + 3) * 4 / 2'") String expression) {
+        log.debug("calculate: expression={}", expression);
+        if (!expression.matches("[0-9+\\-*/().\\s]+")) {
+            return "Only numeric arithmetic is supported.";
+        }
+        try {
+            Object result = new SpelExpressionParser().parseExpression(expression).getValue();
+            return String.valueOf(result);
+        } catch (Exception e) {
+            log.warn("calculate: failed for '{}': {}", expression, e.getMessage());
+            return "Cannot evaluate: " + expression;
+        }
     }
 }

@@ -1,11 +1,13 @@
 package com.aiengineering.config;
 
-import com.aiengineering.agent.AgentTools;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import com.aiengineering.agent.AgentTools;
+
+import lombok.extern.slf4j.Slf4j;
 
 // Marks this class as a source of Spring bean definitions.
 // Spring reads @Bean methods here during context startup.

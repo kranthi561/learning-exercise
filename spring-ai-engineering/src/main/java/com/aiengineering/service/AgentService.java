@@ -6,20 +6,21 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.ai.chat.client.ChatClient;           // Spring AI fluent client for building and sending prompts
-import org.springframework.ai.chat.messages.AssistantMessage;   // Wraps a past AI reply for inclusion in history
-import org.springframework.ai.chat.messages.Message;            // Common interface for all message types (user/assistant/system)
-import org.springframework.ai.chat.messages.UserMessage;        // Wraps a past user turn for inclusion in history
-import org.springframework.ai.chat.model.ChatResponse;          // Full response object from the model (content + metadata)
-import org.springframework.ai.document.Document;                // A knowledge document stored in the vector store
-import org.springframework.ai.image.ImageModel;                 // Spring AI abstraction for image generation (DALL-E etc.)
-import org.springframework.ai.image.ImagePrompt;                // Wraps the text prompt sent to the image model
-import org.springframework.ai.image.ImageResponse;              // Full response from the image model (URLs or base64)
-import org.springframework.ai.openai.OpenAiImageOptions;        // OpenAI-specific options (model, size, quality, n)
-import org.springframework.ai.vectorstore.SearchRequest;        // Builder for similarity search parameters
-import org.springframework.ai.vectorstore.VectorStore;          // Abstraction over PgVector for RAG retrieval
-import org.springframework.stereotype.Service;
+import org.springframework.ai.chat.messages.AssistantMessage;                  // Custom advisor that auto-injects RAG context
+import org.springframework.ai.chat.messages.Message;   // Wraps a past AI reply for inclusion in history
+import org.springframework.ai.chat.messages.UserMessage;            // Common interface for all message types (user/assistant/system)
+import org.springframework.ai.chat.model.ChatResponse;        // Wraps a past user turn for inclusion in history
+import org.springframework.ai.document.Document;          // Full response object from the model (content + metadata)
+import org.springframework.ai.image.ImageModel;                // A knowledge document stored in the vector store
+import org.springframework.ai.image.ImagePrompt;                 // Spring AI abstraction for image generation (DALL-E etc.)
+import org.springframework.ai.image.ImageResponse;                // Wraps the text prompt sent to the image model
+import org.springframework.ai.openai.OpenAiImageOptions;              // Full response from the image model (URLs or base64)
+import org.springframework.ai.vectorstore.SearchRequest;        // OpenAI-specific options (model, size, quality, n)
+import org.springframework.ai.vectorstore.VectorStore;        // Builder for similarity search parameters
+import org.springframework.stereotype.Service;          // Abstraction over PgVector for RAG retrieval
 import org.springframework.transaction.annotation.Transactional;
 
+import com.aiengineering.advisor.VectorStoreRagAdvisor;
 import com.aiengineering.domain.ChatMessage;
 import com.aiengineering.domain.ChatSession;
 import com.aiengineering.domain.MessageRole;
@@ -34,6 +35,8 @@ import com.aiengineering.web.exception.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+import reactor.core.publisher.Flux;
 
 // @Service is a specialisation of @Component — marks this as a business-logic bean
 // so Spring auto-discovers it and makes it injectable into ChatController.
@@ -204,6 +207,60 @@ public class AgentService {
             agentMetrics.recordFailure(elapsed);
             throw ex; // re-throw so GlobalExceptionHandler can return the appropriate HTTP status
         }
+    }
+
+    // Streaming variant: uses .stream() + VectorStoreRagAdvisor instead of the manual
+    // RAG block above. Not @Transactional — doOnComplete runs after the method returns,
+    // so Spring Data's own per-method transactions handle the individual saves.
+    public Flux<String> streamChat(long userId, long sessionId, ChatMessageRequest request) {
+        log.debug("streamChat: userId={}, sessionId={}", userId, sessionId);
+
+        ChatSession session = chatSessionRepository
+                .findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chat session not found"));
+
+        ChatMessage userMsg = new ChatMessage();
+        userMsg.setSession(session);
+        userMsg.setRole(MessageRole.USER);
+        userMsg.setContent(request.content());
+        chatMessageRepository.save(userMsg);
+
+        List<ChatMessage> history = chatMessageRepository.findHistoryForSession(sessionId, userId);
+        if (history.size() > MAX_HISTORY) {
+            history = history.subList(history.size() - MAX_HISTORY, history.size());
+        }
+
+        List<Message> messages = new ArrayList<>();
+        for (ChatMessage m : history) {
+            switch (m.getRole()) {
+                case USER -> messages.add(new UserMessage(m.getContent()));
+                case ASSISTANT -> messages.add(new AssistantMessage(m.getContent()));
+                case SYSTEM -> { /* intentionally skipped */ }
+            }
+        }
+
+        // Capture requestId on the servlet thread before the Reactor async boundary.
+        // VectorStoreRagAdvisor.before() runs on a boundedElastic thread where MDC is
+        // empty; passing it through ChatClientRequest.context() bridges the gap.
+        String requestId = MDC.get("requestId");
+
+        StringBuilder accumulated = new StringBuilder();
+        return chatClient.prompt()
+                .messages(messages)
+                .advisors(spec -> { if (requestId != null) spec.param("requestId", requestId); })
+                .advisors(new VectorStoreRagAdvisor(vectorStore, RAG_TOP_K))
+                .stream()
+                .content()
+                .doOnNext(accumulated::append)
+                .doOnComplete(() -> {
+                    ChatMessage assistant = new ChatMessage();
+                    assistant.setSession(session);
+                    assistant.setRole(MessageRole.ASSISTANT);
+                    assistant.setContent(accumulated.toString());
+                    chatMessageRepository.save(assistant);
+                    log.debug("streamChat: assistant message persisted for sessionId={}", sessionId);
+                })
+                .doOnError(ex -> log.error("streamChat failed: {}", ex.getMessage()));
     }
 
     // Calls DALL-E to generate images for the given prompt.
