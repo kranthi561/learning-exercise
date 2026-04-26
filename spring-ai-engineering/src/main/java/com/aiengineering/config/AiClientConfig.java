@@ -23,8 +23,11 @@ public class AiClientConfig {
     // Parameters (ChatModel, AgentTools) are auto-injected from the context.
     @Bean
     ChatClient chatClient(ChatModel chatModel, AgentTools agentTools, WebSearchTool webSearchTool) {
-        log.debug("chatClient: building ChatClient with model={}", chatModel.getClass().getSimpleName());
+        log.debug("chatClient: building ChatClient with model={}, tools={}, {}", chatModel.getClass().getSimpleName(),
+        agentTools.getClass().getSimpleName(), webSearchTool.getClass().getSimpleName());
         return ChatClient.builder(chatModel)
+                // defaultSystem sets the system prompt that is prepended to every
+                // conversation — it establishes the assistant's persona and instructions.
                 .defaultSystem(
                         """
                         You are an autonomous AI agent with access to tools.
@@ -50,6 +53,8 @@ public class AiClientConfig {
                         - For multi-step tasks, show your reasoning before the final answer.
                         - Keep replies concise unless the user asks for depth.
                         """)
+                // defaultTools registers AgentTools and webSearchTool methods annotated with @Tool so
+                // the LLM can call them (function calling / tool use) on every request.
                 .defaultTools(agentTools, webSearchTool)
                 .build();
     }
