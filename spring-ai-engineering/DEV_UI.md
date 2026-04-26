@@ -47,7 +47,8 @@
 <img width="608" height="550" alt="image" src="https://github.com/user-attachments/assets/87a5c62c-83b1-415c-a9e3-1efe31993cee" />
 
 ## Chat with AI Agent:
-<img width="1466" height="740" alt="image" src="https://github.com/user-attachments/assets/060a5d1d-d486-44a6-8ba3-9bc1ecea7177" />
+<img width="1489" height="729" alt="image" src="https://github.com/user-attachments/assets/92576467-87b2-4ffd-97ce-caf2450cd510" />
+
 
 
 
