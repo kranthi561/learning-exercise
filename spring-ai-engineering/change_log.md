@@ -2,6 +2,58 @@
 
 ---
 
+## 2026-04-26 — LearningTool: Teaching-Character Tool
+
+### Files changed
+- `src/main/java/com/aiengineering/agent/LearningTool.java` *(new)*
+- `src/main/java/com/aiengineering/config/AiClientConfig.java`
+- `src/main/java/com/aiengineering/web/controller/AgentController.java`
+
+### Problem
+There was no dedicated tool for structured learning. Generic chat responses explained concepts as a flat paragraph with no consistent teaching structure, making it hard for learners to build a mental model.
+
+### Solution
+Added `LearningTool` — a `@Component` with a single `@Tool` method `learnConcept(topic, level)`. When the user selects the **learning** tool (or asks to learn/understand/explain something), the agent switches into a **patient tutor character** and always responds in a fixed four-part structure.
+
+### LearningTool — four-part tutor structure
+
+| Section | Purpose |
+|---|---|
+| **Concept** | Plain-language explanation at the stated level (beginner / intermediate / advanced) |
+| **Analogy** | Real-world mapping to something the learner already knows |
+| **Example** | Short runnable code or step-by-step walkthrough |
+| **Think About It** | One open-ended follow-up question to deepen understanding |
+
+`level` defaults to `"beginner"` if blank or not provided. The four-part layout is enforced by the tool's return value — a structured prompt scaffold passed to the LLM.
+
+### AiClientConfig changes
+
+- `LearningTool` injected into `chatClient()` as a new parameter
+- Added to `.defaultTools(agentTools, webSearchTool, learningTool)`
+- System prompt updated with `learnConcept` tool entry and a rule to adopt the tutor character whenever the learning tool is selected:
+
+```
+- learnConcept : explain any concept as a structured tutor
+                 (concept → analogy → example → follow-up question)
+...
+- When the user selects the learning tool or asks to learn/understand/explain
+  something, call learnConcept and adopt the patient tutor character.
+```
+
+### AgentController changes
+
+- `LearningTool` injected into the constructor
+- Added to `MethodToolCallbackProvider.toolObjects(agentTools, webSearchTool, learningTool)` — exposes `learnConcept` via `GET /api/v1/agent/tools`
+- UI template entry added to `TEMPLATES`:
+
+```java
+"learnConcept", "Explain this concept to me: "
+```
+
+When the user types `/learn` in the slash-command picker, the input is pre-filled with `"Explain this concept to me: "`.
+
+---
+
 ## 2026-04-26 — Slash-Command Tool Picker Backed by API
 
 ### Files changed

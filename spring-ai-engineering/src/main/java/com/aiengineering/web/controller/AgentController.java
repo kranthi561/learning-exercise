@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.aiengineering.agent.AgentTools;
+import com.aiengineering.agent.LearningTool;
 import com.aiengineering.agent.WebSearchTool;
 import com.aiengineering.web.dto.chat.ToolInfoResponse;
 
@@ -31,15 +32,16 @@ public class AgentController {
             "findUserProfileByEmail", "Find user profile for email: ",
             "fetchExternalReference", "Fetch external reference for: ",
             "saveToMemory",           "Save to memory key=",
-            "readFromMemory",         "Read from memory key: "
+            "readFromMemory",         "Read from memory key: ",
+            "learnConcept",           "Explain this concept to me: "
     );
 
     // Built once at startup from @Tool-annotated methods via Spring AI reflection.
     private final List<ToolInfoResponse> toolInfos;
 
-    public AgentController(AgentTools agentTools, WebSearchTool webSearchTool) {
+    public AgentController(AgentTools agentTools, WebSearchTool webSearchTool, LearningTool learningTool) {
         ToolCallback[] callbacks = MethodToolCallbackProvider.builder()
-                .toolObjects(agentTools, webSearchTool)
+                .toolObjects(agentTools, webSearchTool, learningTool)
                 .build()
                 .getToolCallbacks();
 
