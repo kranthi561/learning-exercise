@@ -112,6 +112,9 @@
     .btn-stream { background: #0891b2; color: #fff; }
     .btn-stream:hover { background: #0e7490; }
     .btn-stream:disabled { background: #7dd3e0; cursor: not-allowed; }
+    .btn-task { background: #059669; color: #fff; }
+    .btn-task:hover { background: #047857; }
+    .btn-task:disabled { background: #6ee7b7; cursor: not-allowed; }
 
     /* Blinking cursor shown inside the assistant bubble while tokens arrive */
     .stream-cursor {
@@ -392,12 +395,43 @@
       gap: 10px;
       align-items: flex-end;
     }
-    .input-row textarea {
+    .input-wrap {
+      position: relative;
       flex: 1;
+    }
+    .input-wrap textarea {
+      width: 100%;
+      box-sizing: border-box;
       margin-bottom: 0;
       min-height: 44px;
       max-height: 120px;
     }
+
+    /* ── Tool picker (slash-command popup) ── */
+    #tool-picker {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+      z-index: 200;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .tp-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #1e293b;
+    }
+    .tp-item:last-child { border-bottom: none; }
+    .tp-item:hover, .tp-item.tp-active { background: #334155; }
+    .tp-name { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+    .tp-name .tp-slash { color: #64748b; }
+    .tp-desc { font-size: 11px; color: #94a3b8; margin-top: 2px; }
     .btn-row { display: flex; gap: 8px; margin-top: 0; }
 
     /* Inline error */
@@ -492,13 +526,18 @@
       <div id="send-err" class="inline-err"></div>
 
       <div class="input-row">
-        <textarea id="msg-input"
-                  placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-                  rows="2"
-                  onkeydown="onMsgKeydown(event)"></textarea>
+        <div class="input-wrap">
+          <div id="tool-picker"></div>
+          <textarea id="msg-input"
+                    placeholder="Type / for tools, or a message… (Enter to send, Shift+Enter for new line)"
+                    rows="3"
+                    onkeydown="onMsgKeydown(event)"
+                    oninput="onMsgInput()"></textarea>
+        </div>
         <div style="display:flex; flex-direction:column; gap:6px">
           <button class="btn btn-green"  id="btn-send"   onclick="sendMessage()"   title="Send and wait for the full reply">Send</button>
           <button class="btn btn-stream" id="btn-stream" onclick="streamMessage()" title="Stream reply token-by-token (SSE)">⚡ Stream</button>
+          <button class="btn btn-task"   id="btn-task"   onclick="runTask()"       title="Run as agentic task — model plans, uses tools, then answers">🤖 Task</button>
           <button class="btn btn-image"  id="btn-image"  onclick="generateImage()" title="Generate image from your prompt">🖼 Image</button>
         </div>
       </div>
@@ -510,6 +549,82 @@
 <script>
   const BASE = 'http://localhost:8080';
   let activeSessionId = null;
+
+  /* ── Tool picker ── */
+  let TOOLS = [];     // populated from GET /api/v1/agent/tools on login
+  let tpIndex = -1;   // currently highlighted picker row
+
+  async function loadTools() {
+    try {
+      const r = await fetch(`${BASE}/api/v1/agent/tools`, { headers: authHeaders() });
+      if (r.ok) {
+        TOOLS = await r.json();
+        console.debug(`loadTools: loaded ${TOOLS.length} tools`);
+      }
+    } catch (e) {
+      console.warn('loadTools: could not fetch tool list', e);
+    }
+  }
+
+  function getSlashQuery() {
+    const val = document.getElementById('msg-input').value;
+    if (!val.startsWith('/')) return null;
+    return val.slice(1).toLowerCase();
+  }
+
+  function renderPicker(query) {
+    const picker = document.getElementById('tool-picker');
+    const filtered = TOOLS.filter(t => query === '' || t.name.toLowerCase().includes(query));
+    if (filtered.length === 0) { hidePicker(); return; }
+
+    tpIndex = 0;
+    picker._filtered = filtered;
+    picker.innerHTML = filtered.map((t, i) => `
+      <div class="tp-item${i === 0 ? ' tp-active' : ''}" data-i="${i}" onmousedown="selectTool(${i})">
+        <div class="tp-name"><span class="tp-slash">/</span>${t.name}</div>
+        <div class="tp-desc">${t.description}</div>
+      </div>`).join('');
+    picker.style.display = 'block';
+  }
+
+  function hidePicker() {
+    const picker = document.getElementById('tool-picker');
+    picker.style.display = 'none';
+    picker._filtered = null;
+    tpIndex = -1;
+  }
+
+  function selectTool(index) {
+    const picker = document.getElementById('tool-picker');
+    const tool = (picker._filtered || [])[index];
+    if (!tool) return;
+    const input = document.getElementById('msg-input');
+    input.value = tool.template;
+    hidePicker();
+    input.focus();
+    input.selectionStart = input.selectionEnd = input.value.length;
+  }
+
+  function movePicker(delta) {
+    const picker = document.getElementById('tool-picker');
+    const items  = picker.querySelectorAll('.tp-item');
+    if (!items.length) return;
+    items[tpIndex]?.classList.remove('tp-active');
+    tpIndex = Math.max(0, Math.min(tpIndex + delta, items.length - 1));
+    items[tpIndex]?.classList.add('tp-active');
+    items[tpIndex]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function onMsgInput() {
+    const q = getSlashQuery();
+    if (q === null) hidePicker(); else renderPicker(q);
+  }
+
+  // Close picker when clicking outside input area
+  document.addEventListener('mousedown', e => {
+    if (!document.getElementById('tool-picker').contains(e.target) &&
+        e.target.id !== 'msg-input') hidePicker();
+  });
 
   // Configure marked: enable GitHub-flavoured Markdown (tables, strikethrough, etc.)
   marked.use({ gfm: true, breaks: true });
@@ -527,6 +642,7 @@
         const payload = JSON.parse(atob(token.split('.')[1]));
         document.getElementById('auth-label').textContent = payload.email ?? `uid:${payload.sub}`;
       } catch (_) {}
+      loadTools();  // pre-fetch tool list for the slash-command picker
     }
   })();
 
@@ -604,6 +720,7 @@
     }
 
     const btnSend  = document.getElementById('btn-send');
+    const btnTask  = document.getElementById('btn-task');
     const btnImage = document.getElementById('btn-image');
     const errEl    = document.getElementById('send-err');
     errEl.style.display = 'none';
@@ -614,6 +731,7 @@
     input.style.height = 'auto';
 
     btnSend.disabled  = true;
+    btnTask.disabled  = true;
     btnImage.disabled = true;
     showTyping(true, 'Generating image…');
 
@@ -645,6 +763,7 @@
       showErr(errEl, `Network error: ${e.message}`);
     } finally {
       btnSend.disabled  = false;
+      btnTask.disabled  = false;
       btnImage.disabled = false;
       showTyping(false);
     }
@@ -661,8 +780,9 @@
       return;
     }
 
-    const btn = document.getElementById('btn-send');
-    const errEl = document.getElementById('send-err');
+    const btn     = document.getElementById('btn-send');
+    const btnTask = document.getElementById('btn-task');
+    const errEl   = document.getElementById('send-err');
     errEl.style.display = 'none';
 
     // Show user message immediately, then clear input
@@ -670,7 +790,8 @@
     input.value = '';
     input.style.height = 'auto';
 
-    btn.disabled = true;
+    btn.disabled     = true;
+    btnTask.disabled = true;
     showTyping(true);
 
     const reqId = crypto.randomUUID();
@@ -690,15 +811,76 @@
         return;
       }
 
-      // Extract assistant text from the correct DTO field
       const replyText = data.assistantMessage ?? data.reply ?? data.content ?? JSON.stringify(data);
-      const meta = `req: ${reqId.slice(0, 8)}  •  RAG: ${data.ragChunksUsed ?? data.ragDocuments ?? 0}  •  ${data.latencyMs ?? data.durationMs ?? '?'}ms`;
+      const toolsPart = data.toolsUsed?.length ? `  •  tools: ${data.toolsUsed.join(', ')}` : '';
+      const meta = `req: ${reqId.slice(0, 8)}  •  RAG: ${data.ragChunksUsed ?? 0}  •  ${data.latencyMs ?? '?'}ms${toolsPart}`;
       appendBubble('assistant', replyText, meta);
 
     } catch (e) {
       showErr(errEl, `Network error: ${e.message}`);
     } finally {
-      btn.disabled = false;
+      btn.disabled     = false;
+      btnTask.disabled = false;
+      showTyping(false);
+    }
+  }
+
+  /* ── Agentic task — posts to /tasks, model plans + uses tools before answering ── */
+  async function runTask() {
+    const input   = document.getElementById('msg-input');
+    const content = input.value.trim();
+    if (!content) return;
+
+    if (!activeSessionId) {
+      showErr(document.getElementById('send-err'), 'Create a session first.');
+      return;
+    }
+
+    const btnSend   = document.getElementById('btn-send');
+    const btnStream = document.getElementById('btn-stream');
+    const btnTask   = document.getElementById('btn-task');
+    const btnImage  = document.getElementById('btn-image');
+    const errEl     = document.getElementById('send-err');
+    errEl.style.display = 'none';
+
+    appendBubble('user', content);
+    input.value = '';
+    input.style.height = 'auto';
+
+    btnSend.disabled   = true;
+    btnStream.disabled = true;
+    btnTask.disabled   = true;
+    btnImage.disabled  = true;
+    showTyping(true, 'Agent is planning…');
+
+    const reqId = crypto.randomUUID();
+    try {
+      const r = await fetch(`${BASE}/api/v1/chat/sessions/${activeSessionId}/tasks`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'X-Request-ID': reqId },
+        body: JSON.stringify({ task: content })
+      });
+      const data = await r.json();
+
+      document.getElementById('raw-response').textContent = JSON.stringify(data, null, 2);
+
+      if (!r.ok) {
+        showErr(errEl, `${r.status} — ${data.message ?? JSON.stringify(data)}`);
+        return;
+      }
+
+      const replyText = data.assistantMessage ?? data.reply ?? data.content ?? JSON.stringify(data);
+      const toolsPart = data.toolsUsed?.length ? `  •  tools: ${data.toolsUsed.join(', ')}` : '';
+      const meta = `req: ${reqId.slice(0, 8)}  •  RAG: ${data.ragChunksUsed ?? 0}  •  ${data.latencyMs ?? '?'}ms${toolsPart}`;
+      appendBubble('assistant', replyText, meta);
+
+    } catch (e) {
+      showErr(errEl, `Network error: ${e.message}`);
+    } finally {
+      btnSend.disabled   = false;
+      btnStream.disabled = false;
+      btnTask.disabled   = false;
+      btnImage.disabled  = false;
       showTyping(false);
     }
   }
@@ -864,6 +1046,7 @@
 
     const btnSend   = document.getElementById('btn-send');
     const btnStream = document.getElementById('btn-stream');
+    const btnTask   = document.getElementById('btn-task');
     const btnImage  = document.getElementById('btn-image');
     const errEl     = document.getElementById('send-err');
     errEl.style.display = 'none';
@@ -874,6 +1057,7 @@
 
     btnSend.disabled   = true;
     btnStream.disabled = true;
+    btnTask.disabled   = true;
     btnImage.disabled  = true;
     showTyping(true, 'Streaming…');
 
@@ -989,6 +1173,7 @@
     } finally {
       btnSend.disabled   = false;
       btnStream.disabled = false;
+      btnTask.disabled   = false;
       btnImage.disabled  = false;
       showTyping(false);
     }
@@ -1021,7 +1206,18 @@
 
   /* ── Keyboard shortcut: Enter sends, Shift+Enter = new line ── */
   function onMsgKeydown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const pickerOpen = document.getElementById('tool-picker').style.display !== 'none';
+
+    if (pickerOpen) {
+      if (e.key === 'ArrowDown')  { e.preventDefault(); movePicker(+1); return; }
+      if (e.key === 'ArrowUp')    { e.preventDefault(); movePicker(-1); return; }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault(); selectTool(tpIndex); return;
+      }
+      if (e.key === 'Escape')     { e.preventDefault(); hidePicker(); return; }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey && !pickerOpen) {
       e.preventDefault();
       sendMessage();
     }

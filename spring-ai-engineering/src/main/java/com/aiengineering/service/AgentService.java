@@ -5,22 +5,24 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import org.springframework.ai.chat.client.ChatClient;           // Spring AI fluent client for building and sending prompts
-import org.springframework.ai.chat.messages.AssistantMessage;                  // Custom advisor that auto-injects RAG context
-import org.springframework.ai.chat.messages.Message;   // Wraps a past AI reply for inclusion in history
-import org.springframework.ai.chat.messages.UserMessage;            // Common interface for all message types (user/assistant/system)
-import org.springframework.ai.chat.model.ChatResponse;        // Wraps a past user turn for inclusion in history
-import org.springframework.ai.document.Document;          // Full response object from the model (content + metadata)
-import org.springframework.ai.image.ImageModel;                // A knowledge document stored in the vector store
-import org.springframework.ai.image.ImagePrompt;                 // Spring AI abstraction for image generation (DALL-E etc.)
-import org.springframework.ai.image.ImageResponse;                // Wraps the text prompt sent to the image model
-import org.springframework.ai.openai.OpenAiImageOptions;              // Full response from the image model (URLs or base64)
-import org.springframework.ai.vectorstore.SearchRequest;        // OpenAI-specific options (model, size, quality, n)
-import org.springframework.ai.vectorstore.VectorStore;        // Builder for similarity search parameters
-import org.springframework.stereotype.Service;          // Abstraction over PgVector for RAG retrieval
+import org.slf4j.MDC;           // Spring AI fluent client for building and sending prompts
+import org.springframework.ai.chat.client.ChatClient;                  // Custom advisor that auto-injects RAG context
+import org.springframework.ai.chat.messages.AssistantMessage;   // Wraps a past AI reply for inclusion in history
+import org.springframework.ai.chat.messages.Message;            // Common interface for all message types (user/assistant/system)
+import org.springframework.ai.chat.messages.UserMessage;        // Wraps a past user turn for inclusion in history
+import org.springframework.ai.chat.model.ChatResponse;          // Full response object from the model (content + metadata)
+import org.springframework.ai.document.Document;                // A knowledge document stored in the vector store
+import org.springframework.ai.image.ImageModel;                 // Spring AI abstraction for image generation (DALL-E etc.)
+import org.springframework.ai.image.ImagePrompt;                // Wraps the text prompt sent to the image model
+import org.springframework.ai.image.ImageResponse;              // Full response from the image model (URLs or base64)
+import org.springframework.ai.openai.OpenAiImageOptions;        // OpenAI-specific options (model, size, quality, n)
+import org.springframework.ai.vectorstore.SearchRequest;        // Builder for similarity search parameters
+import org.springframework.ai.vectorstore.VectorStore;          // Abstraction over PgVector for RAG retrieval
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.aiengineering.advisor.VectorStoreRagAdvisor;
+import com.aiengineering.agent.AgentStepRecorder;
 import com.aiengineering.domain.ChatMessage;
 import com.aiengineering.domain.ChatSession;
 import com.aiengineering.domain.MessageRole;
@@ -28,6 +30,7 @@ import com.aiengineering.observability.AgentMetrics;
 import com.aiengineering.repository.ChatMessageRepository;
 import com.aiengineering.repository.ChatSessionRepository;
 import com.aiengineering.web.dto.chat.AgentReplyResponse;
+import com.aiengineering.web.dto.chat.AgentTaskRequest;
 import com.aiengineering.web.dto.chat.ChatMessageRequest;
 import com.aiengineering.web.dto.chat.ImageGenerateRequest;
 import com.aiengineering.web.dto.chat.ImageGenerateResponse;
@@ -35,7 +38,6 @@ import com.aiengineering.web.exception.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import reactor.core.publisher.Flux;
 
 // @Service is a specialisation of @Component — marks this as a business-logic bean
@@ -156,6 +158,7 @@ public class AgentService {
 
         // Capture nanosecond start time for high-resolution latency measurement
         // that will be recorded in the Micrometer Timer.
+        AgentStepRecorder.start();
         long start = System.nanoTime();
         try {
             // Build and execute the prompt against the configured OpenAI model.
@@ -197,7 +200,7 @@ public class AgentService {
 
             // Convert elapsed nanos to millis (divide by 1_000_000) before returning
             // so the DTO exposes a human-readable unit.
-            return new AgentReplyResponse(assistantText, ragDocs.size(), elapsed / 1_000_000);
+            return new AgentReplyResponse(assistantText, ragDocs.size(), elapsed / 1_000_000, AgentStepRecorder.getAndClear());
 
         } catch (RuntimeException ex) {
             log.error("Chat call failed: {}", ex.getMessage());
@@ -301,6 +304,20 @@ public class AgentService {
             log.error("Image generation failed: {}", ex.getMessage());
             throw ex;
         }
+    }
+
+    // Wraps the user's task in a ReAct-style preamble so the model plans before acting.
+    // Delegates to chat() so history, RAG, tool tracking, and metrics all apply unchanged.
+    @Transactional
+    public AgentReplyResponse runTask(long userId, long sessionId, AgentTaskRequest request) {
+        log.debug("runTask: userId={}, sessionId={}", userId, sessionId);
+        String agentPrompt = """
+                Task: %s
+
+                Think step by step. Use available tools as needed. \
+                Show your reasoning before giving the final answer.
+                """.formatted(request.task());
+        return chat(userId, sessionId, new ChatMessageRequest(agentPrompt));
     }
 
     // Helper: safely extracts the total token count from the model's usage metadata.

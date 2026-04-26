@@ -2,6 +2,197 @@
 
 ---
 
+## 2026-04-26 — Slash-Command Tool Picker Backed by API
+
+### Files changed
+- `src/main/java/com/aiengineering/web/controller/AgentController.java` *(new)*
+- `src/main/java/com/aiengineering/web/dto/chat/ToolInfoResponse.java` *(new)*
+- `src/main/resources/static/dev-ui/chat.html`
+
+### Problem
+The tool list in the slash-command picker was hardcoded in `chat.html`. Adding or renaming a `@Tool` method required a manual JS edit — two places to keep in sync.
+
+### Solution
+A new `GET /api/v1/agent/tools` endpoint reflects the actual `@Tool` annotations at startup using Spring AI's `MethodToolCallbackProvider`. The frontend fetches this list once on page load and populates the picker dynamically.
+
+### Backend — `GET /api/v1/agent/tools`
+
+**`AgentController`** uses `MethodToolCallbackProvider` to introspect `@Tool`-annotated methods at startup:
+
+```java
+ToolCallback[] callbacks = MethodToolCallbackProvider.builder()
+        .toolObjects(agentTools, webSearchTool)
+        .build()
+        .getToolCallbacks();
+```
+
+Each `ToolCallback.getToolDefinition()` provides `name()` and `description()` directly from the annotation. The list is built once and cached as an immutable field — the endpoint is O(1).
+
+**`ToolInfoResponse`** DTO:
+```json
+{ "name": "searchWeb", "description": "Search the web for...", "template": "Search the web for: " }
+```
+
+`template` is a UI hint (the text pre-filled into the chat input on selection). It lives in `AgentController.TEMPLATES` — a `Map<String, String>` keyed by tool name — since it is presentation-specific and not part of Spring AI tool metadata.
+
+**To add a new tool**: add the `@Tool` annotation as usual, then add one entry in `AgentController.TEMPLATES`. The picker picks it up on the next page load automatically.
+
+### Frontend — `chat.html`
+
+| # | Change | Detail |
+|---|---|---|
+| 1 | **`TOOLS` array removed** | Replaced hardcoded `const TOOLS = [...]` with `let TOOLS = []` |
+| 2 | **`loadTools()`** | `async` function that `GET /api/v1/agent/tools` with the current JWT; populates `TOOLS` |
+| 3 | **Called on init** | `loadTools()` invoked inside the `init()` IIFE when a valid token is present — runs on every page load |
+| 4 | **`t.desc` → `t.description`** | `renderPicker` updated to use the API field name |
+
+### Slash-command picker behaviour (unchanged)
+
+| Interaction | Effect |
+|---|---|
+| Type `/` | Picker floats above the textarea with all tools |
+| Continue typing (`/sea`) | List filters to matching tool names |
+| `↑` / `↓` | Move highlight |
+| `Enter` or `Tab` | Fill input with the tool's template string |
+| `Escape` or click outside | Dismiss picker |
+
+---
+
+## 2026-04-26 — Slash-Command Tool Picker (chat.html)
+
+### Files changed
+- `src/main/resources/static/dev-ui/chat.html`
+
+### Changes
+
+| # | Change | Detail |
+|---|---|---|
+| 1 | **CSS** | `.input-wrap` (position:relative wrapper), `#tool-picker` (absolute, floats above textarea), `.tp-item`, `.tp-name`, `.tp-desc`, `.tp-slash`, `.tp-active` |
+| 2 | **HTML** | Textarea wrapped in `<div class="input-wrap">` with `<div id="tool-picker">` sibling; placeholder updated to "Type / for tools…" |
+| 3 | **`TOOLS` array** | Tool definitions with `name`, `description`, `template` (pre-fill string) |
+| 4 | **`renderPicker(query)`** | Filters `TOOLS` by name, renders items, stores filtered list on the picker element |
+| 5 | **`hidePicker()`** | Hides picker, clears `_filtered` and `tpIndex` |
+| 6 | **`selectTool(index)`** | Sets `input.value = tool.template`, closes picker, moves cursor to end |
+| 7 | **`movePicker(delta)`** | Moves highlight up/down, scrolls active item into view |
+| 8 | **`onMsgInput()`** | `oninput` handler — calls `renderPicker` or `hidePicker` based on `/` prefix |
+| 9 | **`onMsgKeydown` updated** | Routes `↑↓`, `Enter`/`Tab`, `Escape` to picker when open; falls through to `sendMessage` when closed |
+| 10 | **Outside-click closes picker** | `document.addEventListener('mousedown', ...)` dismisses picker when clicking outside input area |
+
+---
+
+## 2026-04-25 — Agentic AI: Tools, Web Search, Task Endpoint, Step Recorder
+
+### Files changed
+- `src/main/java/com/aiengineering/agent/AgentStepRecorder.java` *(new)*
+- `src/main/java/com/aiengineering/agent/AgentTools.java`
+- `src/main/java/com/aiengineering/agent/WebSearchTool.java` *(new)*
+- `src/main/java/com/aiengineering/config/AiClientConfig.java`
+- `src/main/java/com/aiengineering/service/AgentService.java`
+- `src/main/java/com/aiengineering/web/dto/chat/AgentReplyResponse.java`
+- `src/main/java/com/aiengineering/web/dto/chat/AgentTaskRequest.java` *(new)*
+- `src/main/java/com/aiengineering/web/controller/ChatController.java`
+- `src/main/resources/application-dev.yml`
+- `src/main/resources/static/dev-ui/chat.html`
+
+### AgentStepRecorder — ThreadLocal tool-call tracker
+
+`AgentStepRecorder` is a static utility backed by `ThreadLocal`. It gives the blocking `chat()` path a per-request scratchpad without requiring any Spring scope:
+
+| Method | Purpose |
+|---|---|
+| `start()` | Clear steps + memory at the start of each turn |
+| `recordTool(name)` | Called by each `@Tool` method as it executes |
+| `getAndClear()` | Harvested by `AgentService` after the LLM call returns |
+| `saveMemory(k, v)` / `readMemory(k)` | Scratchpad used by `saveToMemory` / `readFromMemory` tools |
+
+Not safe for the streaming path (Reactor thread-hops lose `ThreadLocal` state).
+
+### AgentTools — new tools
+
+| Tool | When to use |
+|---|---|
+| `searchKnowledgeBase(query)` | Wraps `VectorStore`; agent can search internal docs explicitly |
+| `saveToMemory(key, value)` | Persist an intermediate result for later use in the same turn |
+| `readFromMemory(key)` | Retrieve a value saved earlier in the same turn |
+
+All existing tools (`findUserProfileByEmail`, `fetchExternalReference`, `getCurrentDateTime`, `calculate`) now call `AgentStepRecorder.recordTool()` so their names appear in the response.
+
+### WebSearchTool — Tavily web search
+
+Calls the Tavily Search API (`POST https://api.tavily.com/search`) and returns the top 5 results as formatted Markdown text. The model can then cite sources in its answer.
+
+**Setup**: set `TAVILY_API_KEY` in the environment.  
+**Graceful degradation**: if the key is blank the tool returns `"Web search is unavailable"` so the model falls back to its own knowledge instead of crashing.
+
+```yaml
+# application-dev.yml
+app:
+  web-search:
+    tavily:
+      api-key: ${TAVILY_API_KEY:}
+```
+
+Works in both the blocking `chat()` path and the streaming path — Spring AI executes tool calls transparently in both modes.
+
+### AiClientConfig — ReAct system prompt
+
+System prompt upgraded from one paragraph to a full ReAct-style agent instruction set:
+
+```
+1. PLAN  — decide which tools are needed
+2. ACT   — call tools, in sequence if results depend on each other
+3. OBSERVE — interpret results; save intermediate facts with saveToMemory
+4. ANSWER — respond citing sources
+```
+
+Tool selection guidance added per tool so the model knows when to prefer `searchWeb` vs `searchKnowledgeBase`.
+
+### AgentReplyResponse — toolsUsed field
+
+```java
+// Before
+record AgentReplyResponse(String assistantMessage, int ragChunksUsed, long latencyMs)
+
+// After
+record AgentReplyResponse(String assistantMessage, int ragChunksUsed, long latencyMs, List<String> toolsUsed)
+```
+
+### AgentService — step recorder integration + runTask()
+
+- `AgentStepRecorder.start()` called before `chatClient.prompt()...call()`
+- `AgentStepRecorder.getAndClear()` passed as `toolsUsed` in the returned `AgentReplyResponse`
+- New `runTask()` wraps the user's input in a ReAct preamble (`Task: ... Think step by step...`) then delegates to `chat()` — history, RAG, metrics, and step recording all apply unchanged
+
+### New endpoint — `POST /api/v1/chat/sessions/{sessionId}/tasks`
+
+```http
+POST /api/v1/chat/sessions/1/tasks
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "task": "Find the latest Spring AI release notes and summarise the key changes" }
+```
+
+```json
+{
+  "assistantMessage": "...",
+  "ragChunksUsed": 0,
+  "latencyMs": 2340,
+  "toolsUsed": ["searchWeb", "saveToMemory"]
+}
+```
+
+### chat.html — Task button + tools-used meta
+
+| # | Change | Detail |
+|---|---|---|
+| 1 | **🤖 Task button** | Green button between Stream and Image. Posts to `/tasks`; typing indicator says "Agent is planning…" |
+| 2 | **`runTask()` function** | Mirrors `sendMessage()` but hits `/tasks` with `{ task }`. All four buttons disabled during flight. |
+| 3 | **tools-used in meta** | `sendMessage()` and `runTask()` append `• tools: searchWeb, calculate` when `toolsUsed` is non-empty |
+| 4 | **All buttons disabled together** | Send, Stream, Task, Image all disabled during any in-flight request |
+
+---
+
 ## 2026-04-25 — LoggingInterceptor Execution Order (before RateLimitFilter)
 
 ### Files changed

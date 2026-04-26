@@ -6,6 +6,7 @@ import com.aiengineering.security.UserPrincipal;
 import com.aiengineering.service.AgentService;
 import com.aiengineering.service.ChatSessionService;
 import com.aiengineering.web.dto.chat.AgentReplyResponse;
+import com.aiengineering.web.dto.chat.AgentTaskRequest;
 import com.aiengineering.web.dto.chat.ChatMessageRequest;
 import com.aiengineering.web.dto.chat.ChatMessageResponse;
 import com.aiengineering.web.dto.chat.ChatSessionCreateRequest;
@@ -76,6 +77,14 @@ public class ChatController {
         log.debug("generateImage: sessionId={}", sessionId);
         UserPrincipal user = SecurityUtils.requireCurrentUser();
         return agentService.generateImage(user.id(), sessionId, request);
+    }
+
+    @PostMapping("/sessions/{sessionId}/tasks")
+    AgentReplyResponse runTask(
+            @PathVariable long sessionId, @Valid @RequestBody AgentTaskRequest request) {
+        log.debug("runTask: sessionId={}", sessionId);
+        UserPrincipal user = SecurityUtils.requireCurrentUser();
+        return agentService.runTask(user.id(), sessionId, request);
     }
 
     @GetMapping("/sessions/{sessionId}/messages")

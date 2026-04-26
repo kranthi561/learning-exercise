@@ -19,6 +19,7 @@ services:
       REDIS_PORT: "6379"
       # Set in shell or a .env file next to docker-compose.yml
       OPENAI_API_KEY: ${OPENAI_API_KEY:-changeMe}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
