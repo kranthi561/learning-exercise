@@ -1,0 +1,31 @@
+services:
+  spring-ai-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: spring-ai-mcp:latest
+    container_name: spring-ai-mcp
+    # restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-8081}:8081"
+    # Reads secrets and config from a local .env file (see .env.example).
+    env_file:
+      - .env
+    environment:
+      # Override the in-container folder paths so the Java side aligns with
+      # the bind-mounts below.
+      SOURCE_FOLDER: /app/source-images
+      DESTINATION_FOLDER: /app/uploaded-images
+      REEL_TEMP_FOLDER: /app/reel-temp
+      LOG_LEVEL: DEBUG
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+    volumes:
+      # Drop new images into ./source-images on the host — the watcher inside
+      # the container will pick them up and post to Instagram.
+      - ./source-images:/app/source-images
+      # Successfully posted images land here.
+      - ./uploaded-images:/app/uploaded-images
+      - ./reel-temp:/app/reel-temp
+      - ./logs:/app/logs
+      - ./target/spring-ai-mcp-0.0.1-SNAPSHOT.jar:/app/app.jar:ro

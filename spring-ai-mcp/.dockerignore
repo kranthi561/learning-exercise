@@ -1,0 +1,12 @@
+# Keep the build context small.
+target/
+.idea/
+.vscode/
+.git/
+.gitignore
+*.iml
+.DS_Store
+# Don't bake local images or secrets into the image — they're bind-mounted.
+source-images/
+uploaded-images/
+.env

@@ -1,0 +1,84 @@
+spring:
+  application:
+    name: spring-ai-mcp
+  ai:
+    mcp:
+      server:
+        name: spring-ai-mcp
+        version: 1.0.0
+        type: SYNC
+        protocol: SSE
+        sse-endpoint: /mcp/sse
+        sse-message-endpoint: /mcp/messages
+    # OpenAI is used to generate captions from the image. Caption generation
+    # gracefully degrades to a filename-based default if the api-key is blank.
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-4o-mini}
+
+server:
+  port: ${SERVER_PORT:8081}
+
+logging:
+  level:
+    root: INFO
+    com.instagram.mcp: ${LOG_LEVEL:INFO}
+  pattern:
+    # Console pattern — fields in order:
+    #   %d{...}          timestamp with milliseconds
+    #   %5p              log level right-padded to 5 chars (INFO, DEBUG, WARN, ERROR)
+    #   ${PID:- }        OS process ID (useful when multiple instances log to the same sink)
+    #   ---              visual separator
+    #   [%15.15t]        thread name, truncated/padded to 15 chars
+    #   %-40.40logger{39} logger class name (package abbreviated), fixed 40-char column
+    #   :%4L             source line number (4 chars); uses stack introspection — acceptable cost for dev
+    #   :                separator
+    #   %m               the log message
+    #   %n               platform line separator
+    #   %wEx             exception stack trace with Spring Boot's whitespace-trimming wrapper
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%15.15t] [%X{requestId}] %-40.40logger{39}:%4L : %m%n%wEx"
+
+    # File pattern — same as console but without ANSI colour codes so log files stay readable
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } --- [%15.15t] [%X{requestId}] %-40.40logger{39}:%4L : %m%n%wEx"
+
+
+app:
+  instagram:
+    # If you already have a long-lived token, set it here and the OAuth flow
+    # is optional. Otherwise leave blank and run /instagram/oauth/login.
+    access-token: ${INSTAGRAM_ACCESS_TOKEN:}
+    user-id: ${INSTAGRAM_USER_ID:}
+    # Publicly reachable base URL for this server (used to build image URLs
+    # for the Graph API and as the default OAuth redirect URI base).
+    # For local dev, use ngrok: e.g. https://abc123.ngrok-free.app
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8081}
+    # Folder the watcher reads new images from (and the controller serves images from).
+    source-folder: ${SOURCE_FOLDER:source-images}
+    # Folder images are moved into after a successful Instagram upload.
+    destination-folder: ${DESTINATION_FOLDER:uploaded-images}
+    # Temp folder for Reel video files — created automatically, cleaned up after publish.
+    reel-temp-folder: ${REEL_TEMP_FOLDER:reel-temp}
+    watcher:
+      enabled: ${WATCHER_ENABLED:true}
+      poll-interval-ms: ${WATCHER_POLL_MS:30000}
+      initial-delay-ms: ${WATCHER_INITIAL_DELAY_MS:5000}
+      min-file-age-ms: ${WATCHER_MIN_FILE_AGE_MS:3000}
+    oauth:
+      # Display name for the app — only used in the human-readable status page.
+      app-name: ${INSTAGRAM_APP_NAME:}
+      # From the Meta App dashboard.
+      app-id: ${INSTAGRAM_APP_ID:}
+      app-secret: ${INSTAGRAM_APP_SECRET:}
+      # Must match a redirect URI registered in the Meta App dashboard.
+      # Defaults to {public-base-url}/instagram/oauth/callback.
+      redirect-uri: ${INSTAGRAM_REDIRECT_URI:${PUBLIC_BASE_URL:http://localhost:8081}/instagram/oauth/callback/}
+      # Comma-separated list of scopes for Instagram API with Instagram Login.
+      scope: ${INSTAGRAM_OAUTH_SCOPE:instagram_basic}
+    reel:
+      # Set REEL_ENABLED=true to post as Instagram Reels with AI-narrated audio.
+      # Requires OPENAI_API_KEY and ffmpeg (brew install ffmpeg).
+      enabled: ${REEL_ENABLED:false}
+      # OpenAI TTS voice: alloy | echo | fable | onyx | nova | shimmer
+      voice: ${REEL_VOICE:nova}
